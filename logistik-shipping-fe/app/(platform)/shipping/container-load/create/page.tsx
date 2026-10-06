@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
-import { ContactShadows, OrbitControls } from "@react-three/drei";
+import { ContactShadows, Edges, OrbitControls } from "@react-three/drei";
 import { Search, Plus, Box, Trash2, Minus, LayoutPanelTop, ZoomIn, ZoomOut, Check, ChevronsUpDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -177,19 +177,27 @@ function getVehicleDimensions(detail: {
 }
 
 function buildCargoLayout(items: SelectedProductItem[], dimensions: VehicleDimensions): CargoLayout {
-  const unitLength = clamp(dimensions.length / 7.5, 0.5, 1.05);
-  const unitWidth = clamp(dimensions.width / 3.4, 0.4, 0.8);
-  const unitHeight = clamp(dimensions.height / 3.2, 0.35, 0.9);
-  const gap = 0.08;
+  // Preferred unit size; the real unit is stretched below so the grid fills the bed exactly (no gaps).
+  const preferredLength = clamp(dimensions.length / 7.5, 0.5, 1.05);
+  const preferredWidth = clamp(dimensions.width / 3.4, 0.4, 0.8);
+  const preferredHeight = clamp(dimensions.height / 3.2, 0.35, 0.9);
 
-  const usableLength = Math.max(dimensions.length - 0.5, unitLength);
-  const usableWidth = Math.max(dimensions.width - 0.24, unitWidth);
-  const usableHeight = Math.max(dimensions.height - 0.3, unitHeight);
+  // Inner space of the bed: minus the 0.06 walls on each side and a hair of clearance.
+  const WALL_CLEARANCE = 0.07;
+  const FLOOR_CLEARANCE = 0.005;
+  const usableLength = Math.max(dimensions.length - WALL_CLEARANCE * 2, preferredLength);
+  const usableWidth = Math.max(dimensions.width - WALL_CLEARANCE * 2, preferredWidth);
+  const usableHeight = Math.max(dimensions.height - 0.1, preferredHeight);
 
-  const columns = Math.max(1, Math.floor((usableLength + gap) / (unitLength + gap)));
-  const rows = Math.max(1, Math.floor((usableWidth + gap) / (unitWidth + gap)));
-  const layers = Math.max(1, Math.floor((usableHeight + gap) / (unitHeight + gap)));
-  const slotCapacity = Math.max(1, columns * rows * layers);
+  const columns = Math.max(1, Math.floor(usableLength / preferredLength));
+  const rows = Math.max(1, Math.floor(usableWidth / preferredWidth));
+  const layers = Math.max(1, Math.floor(usableHeight / preferredHeight));
+  const unitLength = usableLength / columns;
+  const unitWidth = usableWidth / rows;
+  const unitHeight = usableHeight / layers;
+
+  const floorCapacity = columns * rows;
+  const slotCapacity = floorCapacity * layers;
 
   const expandedUnits = items.flatMap((item) => {
     const unitCount = Math.max(0, Math.round(parseCount(item.count)));
@@ -205,13 +213,15 @@ function buildCargoLayout(items: SelectedProductItem[], dimensions: VehicleDimen
   const blocks: CargoBlock[] = [];
 
   for (let index = 0; index < visibleUnits; index += 1) {
-    const column = index % columns;
-    const row = Math.floor(index / columns) % rows;
-    const layer = Math.floor(index / (columns * rows));
+    // Fill the whole floor (layer 0) before starting layer 1: across the width first, then along the length.
+    const layer = Math.floor(index / floorCapacity);
+    const onFloor = index % floorCapacity;
+    const row = onFloor % rows;
+    const column = Math.floor(onFloor / rows);
 
-    const x = -dimensions.length / 2 + 0.25 + unitLength / 2 + column * (unitLength + gap);
-    const z = -dimensions.width / 2 + 0.12 + unitWidth / 2 + row * (unitWidth + gap);
-    const y = 0.08 + unitHeight / 2 + layer * (unitHeight + gap);
+    const x = -usableLength / 2 + unitLength / 2 + column * unitLength;
+    const z = -usableWidth / 2 + unitWidth / 2 + row * unitWidth;
+    const y = FLOOR_CLEARANCE + unitHeight / 2 + layer * unitHeight;
 
     blocks.push({
       id: expandedUnits[index]?.id ?? `block-${index}`,
@@ -883,6 +893,7 @@ function TruckScene({
           >
             <boxGeometry args={block.size} />
             <meshStandardMaterial color={block.color} metalness={0.12} roughness={0.65} />
+            <Edges threshold={15} color="#0f172a" />
           </mesh>
         ))}
 
