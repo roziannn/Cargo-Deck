@@ -61,3 +61,11 @@ export async function handle(fn: () => Promise<NextResponse | Response>, options
 }
 
 export const noContent = () => new NextResponse(null, { status: 204 });
+
+/** Optional numeric field: empty -> null, non-numeric -> 400. */
+export function optNumber(value: unknown, label: string) {
+  if (value === null || value === undefined || (typeof value === "string" && !value.trim())) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) throw new HttpError(400, `${label} must be a number.`);
+  return n;
+}
