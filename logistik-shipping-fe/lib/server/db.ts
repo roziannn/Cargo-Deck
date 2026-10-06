@@ -8,9 +8,20 @@ const globalForDb = globalThis as unknown as { __pgPool?: Pool };
 
 function getPool() {
   if (!globalForDb.__pgPool) {
-    const connectionString = process.env.DATABASE_URL;
-    if (!connectionString) throw new Error('Missing DATABASE_URL. Set it in ".env.local" (see README).');
-    globalForDb.__pgPool = new Pool({ connectionString });
+    const env = process.env;
+    const host = env.DB_HOST ?? env.PGHOST;
+    const database = env.DB_NAME ?? env.PGDATABASE;
+    if (!host || !database) {
+      throw new Error('Missing database config. Set DB_HOST, DB_PORT, DB_USER, DB_PASSWORD and DB_NAME in ".env.local" (see README).');
+    }
+    globalForDb.__pgPool = new Pool({
+      host,
+      port: Number(env.DB_PORT ?? env.PGPORT ?? 5432),
+      user: env.DB_USER ?? env.PGUSER,
+      password: env.DB_PASSWORD ?? env.PGPASSWORD,
+      database,
+      ssl: env.DB_SSL === "true" ? { rejectUnauthorized: false } : undefined,
+    });
   }
   return globalForDb.__pgPool;
 }

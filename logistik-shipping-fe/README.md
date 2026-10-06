@@ -137,7 +137,12 @@ Served by Next.js route handlers under `app/api/v1/*` (no separate backend). Lay
    (creates login users, the Administrator role, base menus and a default login `admin` / `Admin123!` — change it after first login).
 2. In `.env.local` set:
    ```
-   DATABASE_URL="postgresql://user:password@localhost:5432/logistik_shipping"
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_USER=postgres
+   DB_PASSWORD=your_password
+   DB_NAME=logistik_shipping
+   DB_SSL=false   # true for hosted databases that require SSL
    AUTH_SECRET="<random string, min 32 chars, e.g. `openssl rand -base64 48`>"
    NEXT_PUBLIC_API_BASE_URL=   # leave empty to call the built-in route handlers (same origin)
    ```
