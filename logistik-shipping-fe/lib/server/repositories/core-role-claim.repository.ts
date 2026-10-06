@@ -14,9 +14,9 @@ export type CoreRoleClaimRow = {
 
 const UPSERT = `
   INSERT INTO core_role_claim (role_id, user_principal_name, employee_name, is_active, created_by)
-  VALUES (@roleId, @upn, COALESCE(@employeeName, @upn), @isActive, @by)
+  VALUES (@roleId, @upn::varchar, COALESCE(@employeeName::varchar, @upn::varchar), @isActive, @by)
   ON CONFLICT (role_id, user_principal_name) DO UPDATE
-     SET employee_name = COALESCE(@employeeName, core_role_claim.employee_name),
+     SET employee_name = COALESCE(@employeeName::varchar, core_role_claim.employee_name),
          is_active = @isActive, updated_by = @by, updated_date = now()`;
 
 export const coreRoleClaimRepository = {

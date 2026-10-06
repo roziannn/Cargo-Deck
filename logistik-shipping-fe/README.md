@@ -133,9 +133,11 @@ If using cookies for SSO, ensure your auth cookie uses:
 Served by Next.js route handlers under `app/api/v1/*` (no separate backend). Layers:
 `app/api/v1/**/route.ts` → `lib/server/services` → `lib/server/repositories` → PostgreSQL (`lib/server/db.ts`, `pg`).
 
-1. Run `../database/001_create_core_access_tables.sql` on your PostgreSQL database.
+1. Run on your PostgreSQL database, in order: `../database/001_create_core_access_tables.sql`, then `../database/002_auth_and_seed.sql`
+   (creates login users, the Administrator role, base menus and a default login `admin` / `Admin123!` — change it after first login).
 2. In `.env.local` set:
    ```
    DATABASE_URL="postgresql://user:password@localhost:5432/logistik_shipping"
+   AUTH_SECRET="<random string, min 32 chars, e.g. `openssl rand -base64 48`>"
    NEXT_PUBLIC_API_BASE_URL=   # leave empty to call the built-in route handlers (same origin)
    ```
