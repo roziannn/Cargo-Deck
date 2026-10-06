@@ -29,6 +29,7 @@ type SelectedProductItem = {
   id: string;
   value: string;
   label: string;
+  weight: number;
   count: string;
   color: string;
   colorHex: string;
@@ -111,6 +112,7 @@ function createSelectedItem(product: CubstoolLovItem): SelectedProductItem {
     id: `${product.value}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     value: product.value,
     label: product.label,
+    weight: product.weight,
     count: "1",
     color: colorToken.badgeClass,
     colorHex: colorToken.hex,
@@ -204,8 +206,13 @@ function buildCargoLayout(items: SelectedProductItem[], dimensions: VehicleDimen
     return Array.from({ length: unitCount }, (_, index) => ({
       id: `${item.id}-${index}`,
       color: item.colorHex,
+      weight: item.weight ?? 0, // saved drafts from before this field existed have no weight
     }));
   });
+
+  // Heaviest first so it lands on the floor; the fill order below then puts lighter units in higher layers.
+  // Array.sort is stable, so equal weights keep their selection order.
+  expandedUnits.sort((a, b) => b.weight - a.weight);
 
   const totalUnits = expandedUnits.length;
   const visibleUnits = Math.min(totalUnits, slotCapacity);
