@@ -11,8 +11,12 @@ function getPool() {
     const env = process.env;
     const host = env.DB_HOST ?? env.PGHOST;
     const database = env.DB_NAME ?? env.PGDATABASE;
-    if (!host || !database) {
-      throw new Error('Missing database config. Set DB_HOST, DB_PORT, DB_USER, DB_PASSWORD and DB_NAME in ".env.local" (see README).');
+    const missing = [!host && "DB_HOST", !database && "DB_NAME"].filter(Boolean);
+    if (missing.length > 0) {
+      throw new Error(
+        `Missing database config: ${missing.join(", ")} not set. ` +
+          `Put them in ".env.local" next to package.json (cwd: ${process.cwd()}), save as UTF-8, then restart the dev server.`,
+      );
     }
     globalForDb.__pgPool = new Pool({
       host,
