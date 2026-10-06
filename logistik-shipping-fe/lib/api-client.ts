@@ -27,11 +27,8 @@ function normalizePath(path: string) {
 }
 
 function getBaseUrl() {
-  const raw = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (!raw) {
-    throw new Error('Missing NEXT_PUBLIC_API_BASE_URL. Set it in ".env.local" (copy from ".env.example").');
-  }
-  return normalizeBaseUrl(raw);
+  // Empty = same origin, i.e. the Next.js route handlers under app/api.
+  return normalizeBaseUrl(process.env.NEXT_PUBLIC_API_BASE_URL ?? "");
 }
 
 function getApiVersion() {

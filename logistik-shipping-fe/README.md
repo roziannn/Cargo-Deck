@@ -127,3 +127,15 @@ If using cookies for SSO, ensure your auth cookie uses:
 - `SameSite=None`
 - `Secure=true`
 - Set from your API domain (`localhost`) so the browser accepts it.
+
+## Core access API (Role, RoleClaim, Menu, MenuFunction, RoleMenu)
+
+Served by Next.js route handlers under `app/api/v1/*` (no separate backend). Layers:
+`app/api/v1/**/route.ts` → `lib/server/services` → `lib/server/repositories` → SQL Server (`lib/server/db.ts`).
+
+1. Run `../database/001_create_core_access_tables.sql` on your SQL Server database.
+2. In `.env.local` set:
+   ```
+   DB_CONNECTION_STRING="Server=localhost,1433;Database=LogistikShipping;User Id=sa;Password=...;Encrypt=true;TrustServerCertificate=true"
+   NEXT_PUBLIC_API_BASE_URL=   # leave empty to call the built-in route handlers (same origin)
+   ```
