@@ -36,6 +36,7 @@ export type UpdateMstCubstoolPayload = MstCubstoolPayload & {
 export type CubstoolLovItem = {
   value: string;
   label: string;
+  weight: number;
 };
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -143,6 +144,16 @@ function mapCubstool(item: unknown): MstCubstoolItem | null {
   };
 }
 
+// Weight may arrive as a number, a numeric string, or free text like "2 kg"; missing/invalid counts as 0 (lightest).
+function parseWeight(value: unknown) {
+  if (typeof value === "number") return Number.isFinite(value) && value > 0 ? value : 0;
+  if (typeof value !== "string") return 0;
+
+  const match = value.replace(",", ".").match(/\d+(\.\d+)?/);
+  const parsed = match ? Number(match[0]) : 0;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
 function mapCubstoolLov(item: unknown): CubstoolLovItem | null {
   if (!isRecord(item)) return null;
 
@@ -154,6 +165,7 @@ function mapCubstoolLov(item: unknown): CubstoolLovItem | null {
   return {
     value,
     label: label || value,
+    weight: parseWeight(item.weight ?? item.Weight),
   };
 }
 
