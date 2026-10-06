@@ -37,40 +37,40 @@ function buildTree(menus: CoreMenuRow[], functions: CoreMenuFunctionRow[], acces
   const menuAccess = new Map<string, boolean>();
   const funcAccess = new Map<string, boolean>();
   for (const a of access ?? []) {
-    if (a.FunctionNewId) funcAccess.set(key(a.FunctionNewId), a.IsActiveBtn);
-    else menuAccess.set(key(a.MenuNewId), a.IsActive);
+    if (a.functionNewId) funcAccess.set(key(a.functionNewId), a.isActiveBtn);
+    else menuAccess.set(key(a.menuNewId), a.isActive);
   }
 
   const funcsByMenu = new Map<string, FunctionDto[]>();
   for (const f of functions) {
-    const list = funcsByMenu.get(key(f.MenuNewId)) ?? [];
+    const list = funcsByMenu.get(key(f.menuNewId)) ?? [];
     list.push({
-      newId: f.NewId,
-      name: f.Name,
-      path: f.Path ?? "",
-      isActive: access ? f.IsActive && (funcAccess.get(key(f.NewId)) ?? false) : f.IsActive,
+      newId: f.newId,
+      name: f.name,
+      path: f.path ?? "",
+      isActive: access ? f.isActive && (funcAccess.get(key(f.newId)) ?? false) : f.isActive,
     });
-    funcsByMenu.set(key(f.MenuNewId), list);
+    funcsByMenu.set(key(f.menuNewId), list);
   }
 
   const nodes = new Map<string, MenuDto>();
   for (const m of menus) {
-    nodes.set(key(m.NewId), {
-      id: m.Id,
-      newId: m.NewId,
-      name: m.Name,
-      parentId: m.ParentId,
-      seq: m.Seq,
-      icon: m.Icon ?? "",
-      path: m.Path ?? "",
-      isVisible: m.IsVisible,
-      isActive: access ? m.IsActive && (menuAccess.get(key(m.NewId)) ?? false) : m.IsActive,
-      isDevelopment: m.IsDevelopment,
-      createdBy: m.CreatedBy,
-      createdDate: m.CreatedDate,
-      updatedBy: m.UpdatedBy,
-      updatedDate: m.UpdatedDate,
-      functionBtn: funcsByMenu.get(key(m.NewId)) ?? [],
+    nodes.set(key(m.newId), {
+      id: m.id,
+      newId: m.newId,
+      name: m.name,
+      parentId: m.parentId,
+      seq: m.seq,
+      icon: m.icon ?? "",
+      path: m.path ?? "",
+      isVisible: m.isVisible,
+      isActive: access ? m.isActive && (menuAccess.get(key(m.newId)) ?? false) : m.isActive,
+      isDevelopment: m.isDevelopment,
+      createdBy: m.createdBy,
+      createdDate: m.createdDate,
+      updatedBy: m.updatedBy,
+      updatedDate: m.updatedDate,
+      functionBtn: funcsByMenu.get(key(m.newId)) ?? [],
       subMenu: [],
     });
   }

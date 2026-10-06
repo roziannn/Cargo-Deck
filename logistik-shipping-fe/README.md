@@ -131,11 +131,11 @@ If using cookies for SSO, ensure your auth cookie uses:
 ## Core access API (Role, RoleClaim, Menu, MenuFunction, RoleMenu)
 
 Served by Next.js route handlers under `app/api/v1/*` (no separate backend). Layers:
-`app/api/v1/**/route.ts` → `lib/server/services` → `lib/server/repositories` → SQL Server (`lib/server/db.ts`).
+`app/api/v1/**/route.ts` → `lib/server/services` → `lib/server/repositories` → PostgreSQL (`lib/server/db.ts`, `pg`).
 
-1. Run `../database/001_create_core_access_tables.sql` on your SQL Server database.
+1. Run `../database/001_create_core_access_tables.sql` on your PostgreSQL database.
 2. In `.env.local` set:
    ```
-   DB_CONNECTION_STRING="Server=localhost,1433;Database=LogistikShipping;User Id=sa;Password=...;Encrypt=true;TrustServerCertificate=true"
+   DATABASE_URL="postgresql://user:password@localhost:5432/logistik_shipping"
    NEXT_PUBLIC_API_BASE_URL=   # leave empty to call the built-in route handlers (same origin)
    ```

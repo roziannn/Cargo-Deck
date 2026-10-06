@@ -1,93 +1,77 @@
-/* Core access-control tables: Role, RoleClaim, Menu, MenuFunction, RoleMenu */
+-- Core access-control tables (PostgreSQL): role, role claim, menu, menu function, role menu.
+-- Column names are snake_case; the API maps them to camelCase (new_id -> newId).
 
-IF OBJECT_ID('[dbo].[CORE_Role]') IS NULL
-CREATE TABLE [dbo].[CORE_Role] (
-    [Id]          INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_CORE_Role PRIMARY KEY,
-    [NewId]       UNIQUEIDENTIFIER  NOT NULL CONSTRAINT DF_CORE_Role_NewId DEFAULT NEWID(),
-    [Name]        NVARCHAR(100)     NOT NULL,
-    [IsActive]    BIT               NOT NULL CONSTRAINT DF_CORE_Role_IsActive DEFAULT 1,
-    [CreatedBy]   NVARCHAR(100)     NULL,
-    [CreatedDate] DATETIME2         NOT NULL CONSTRAINT DF_CORE_Role_CreatedDate DEFAULT SYSDATETIME(),
-    [UpdatedBy]   NVARCHAR(100)     NULL,
-    [UpdatedDate] DATETIME2         NULL,
-    CONSTRAINT UQ_CORE_Role_NewId UNIQUE ([NewId]),
-    CONSTRAINT UQ_CORE_Role_Name  UNIQUE ([Name])
+CREATE TABLE IF NOT EXISTS core_role (
+    id           integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    new_id       uuid         NOT NULL DEFAULT gen_random_uuid() UNIQUE,
+    name         varchar(100) NOT NULL UNIQUE,
+    is_active    boolean      NOT NULL DEFAULT true,
+    created_by   varchar(100),
+    created_date timestamptz  NOT NULL DEFAULT now(),
+    updated_by   varchar(100),
+    updated_date timestamptz
 );
-GO
 
-IF OBJECT_ID('[dbo].[CORE_RoleClaim]') IS NULL
-CREATE TABLE [dbo].[CORE_RoleClaim] (
-    [Id]                INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_CORE_RoleClaim PRIMARY KEY,
-    [RoleId]            UNIQUEIDENTIFIER  NOT NULL, -- CORE_Role.NewId
-    [UserPrincipalName] NVARCHAR(256)     NOT NULL,
-    [EmployeeName]      NVARCHAR(200)     NULL,
-    [IsActive]          BIT               NOT NULL CONSTRAINT DF_CORE_RoleClaim_IsActive DEFAULT 1,
-    [CreatedBy]         NVARCHAR(100)     NULL,
-    [CreatedDate]       DATETIME2         NOT NULL CONSTRAINT DF_CORE_RoleClaim_CreatedDate DEFAULT SYSDATETIME(),
-    [UpdatedBy]         NVARCHAR(100)     NULL,
-    [UpdatedDate]       DATETIME2         NULL,
-    CONSTRAINT FK_CORE_RoleClaim_Role FOREIGN KEY ([RoleId]) REFERENCES [dbo].[CORE_Role]([NewId]),
-    CONSTRAINT UQ_CORE_RoleClaim_Role_User UNIQUE ([RoleId], [UserPrincipalName])
+CREATE TABLE IF NOT EXISTS core_role_claim (
+    id                  integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    role_id             uuid         NOT NULL REFERENCES core_role (new_id), -- core_role.new_id
+    user_principal_name varchar(256) NOT NULL,
+    employee_name       varchar(200),
+    is_active           boolean      NOT NULL DEFAULT true,
+    created_by          varchar(100),
+    created_date        timestamptz  NOT NULL DEFAULT now(),
+    updated_by          varchar(100),
+    updated_date        timestamptz,
+    CONSTRAINT uq_core_role_claim_role_user UNIQUE (role_id, user_principal_name)
 );
-GO
 
-IF OBJECT_ID('[dbo].[CORE_Menu]') IS NULL
-CREATE TABLE [dbo].[CORE_Menu] (
-    [Id]            INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_CORE_Menu PRIMARY KEY,
-    [NewId]         UNIQUEIDENTIFIER  NOT NULL CONSTRAINT DF_CORE_Menu_NewId DEFAULT NEWID(),
-    [Name]          NVARCHAR(100)     NOT NULL,
-    [ParentId]      UNIQUEIDENTIFIER  NULL,     -- CORE_Menu.NewId
-    [Seq]           INT               NULL,
-    [Icon]          NVARCHAR(100)     NULL,
-    [Path]          NVARCHAR(255)     NULL,
-    [IsDevelopment] BIT               NOT NULL CONSTRAINT DF_CORE_Menu_IsDevelopment DEFAULT 0,
-    [IsVisible]     BIT               NOT NULL CONSTRAINT DF_CORE_Menu_IsVisible DEFAULT 1,
-    [IsActive]      BIT               NOT NULL CONSTRAINT DF_CORE_Menu_IsActive DEFAULT 1,
-    [CreatedDate]   DATETIME2         NOT NULL CONSTRAINT DF_CORE_Menu_CreatedDate DEFAULT SYSDATETIME(),
-    [CreatedBy]     NVARCHAR(100)     NULL,
-    [UpdatedDate]   DATETIME2         NULL,
-    [UpdatedBy]     NVARCHAR(100)     NULL,
-    CONSTRAINT UQ_CORE_Menu_NewId UNIQUE ([NewId]),
-    CONSTRAINT FK_CORE_Menu_Parent FOREIGN KEY ([ParentId]) REFERENCES [dbo].[CORE_Menu]([NewId])
+CREATE TABLE IF NOT EXISTS core_menu (
+    id             integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    new_id         uuid         NOT NULL DEFAULT gen_random_uuid() UNIQUE,
+    name           varchar(100) NOT NULL,
+    parent_id      uuid         REFERENCES core_menu (new_id),            -- core_menu.new_id
+    seq            integer,
+    icon           varchar(100),
+    path           varchar(255),
+    is_development boolean      NOT NULL DEFAULT false,
+    is_visible     boolean      NOT NULL DEFAULT true,
+    is_active      boolean      NOT NULL DEFAULT true,
+    created_date   timestamptz  NOT NULL DEFAULT now(),
+    created_by     varchar(100),
+    updated_date   timestamptz,
+    updated_by     varchar(100)
 );
-GO
 
-IF OBJECT_ID('[dbo].[CORE_MenuFunction]') IS NULL
-CREATE TABLE [dbo].[CORE_MenuFunction] (
-    [Id]          INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_CORE_MenuFunction PRIMARY KEY,
-    [NewId]       UNIQUEIDENTIFIER  NOT NULL CONSTRAINT DF_CORE_MenuFunction_NewId DEFAULT NEWID(),
-    [Name]        NVARCHAR(100)     NOT NULL,
-    [MenuNewId]   UNIQUEIDENTIFIER  NOT NULL,   -- CORE_Menu.NewId
-    [Path]        NVARCHAR(255)     NULL,
-    [IsActive]    BIT               NOT NULL CONSTRAINT DF_CORE_MenuFunction_IsActive DEFAULT 1,
-    [CreatedBy]   NVARCHAR(100)     NULL,
-    [CreatedDate] DATETIME2         NOT NULL CONSTRAINT DF_CORE_MenuFunction_CreatedDate DEFAULT SYSDATETIME(),
-    [UpdatedBy]   NVARCHAR(100)     NULL,
-    [UpdatedDate] DATETIME2         NULL,
-    CONSTRAINT UQ_CORE_MenuFunction_NewId UNIQUE ([NewId]),
-    CONSTRAINT FK_CORE_MenuFunction_Menu FOREIGN KEY ([MenuNewId]) REFERENCES [dbo].[CORE_Menu]([NewId])
+CREATE TABLE IF NOT EXISTS core_menu_function (
+    id           integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    new_id       uuid         NOT NULL DEFAULT gen_random_uuid() UNIQUE,
+    name         varchar(100) NOT NULL,
+    menu_new_id  uuid         NOT NULL REFERENCES core_menu (new_id),
+    path         varchar(255),
+    is_active    boolean      NOT NULL DEFAULT true,
+    created_by   varchar(100),
+    created_date timestamptz  NOT NULL DEFAULT now(),
+    updated_by   varchar(100),
+    updated_date timestamptz
 );
-GO
 
-/* Menu access row: FunctionNewId IS NULL, uses IsActive.
-   Function (button) access row: FunctionNewId set, uses IsActiveBtn. */
-IF OBJECT_ID('[dbo].[CORE_RoleMenu]') IS NULL
-CREATE TABLE [dbo].[CORE_RoleMenu] (
-    [Id]            INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_CORE_RoleMenu PRIMARY KEY,
-    [RoleNewId]     UNIQUEIDENTIFIER  NOT NULL,
-    [MenuNewId]     UNIQUEIDENTIFIER  NOT NULL,
-    [FunctionNewId] UNIQUEIDENTIFIER  NULL,
-    [IsActive]      BIT               NOT NULL CONSTRAINT DF_CORE_RoleMenu_IsActive DEFAULT 0,
-    [IsActiveBtn]   BIT               NOT NULL CONSTRAINT DF_CORE_RoleMenu_IsActiveBtn DEFAULT 0,
-    [CreatedBy]     NVARCHAR(100)     NULL,
-    [CreatedDate]   DATETIME2         NOT NULL CONSTRAINT DF_CORE_RoleMenu_CreatedDate DEFAULT SYSDATETIME(),
-    [UpdatedBy]     NVARCHAR(100)     NULL,
-    [UpdatedDate]   DATETIME2         NULL,
-    CONSTRAINT FK_CORE_RoleMenu_Role     FOREIGN KEY ([RoleNewId])     REFERENCES [dbo].[CORE_Role]([NewId]),
-    CONSTRAINT FK_CORE_RoleMenu_Menu     FOREIGN KEY ([MenuNewId])     REFERENCES [dbo].[CORE_Menu]([NewId]),
-    CONSTRAINT FK_CORE_RoleMenu_Function FOREIGN KEY ([FunctionNewId]) REFERENCES [dbo].[CORE_MenuFunction]([NewId])
+-- Menu access row:     function_new_id IS NULL, uses is_active.
+-- Function access row: function_new_id set,     uses is_active_btn.
+CREATE TABLE IF NOT EXISTS core_role_menu (
+    id              integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    role_new_id     uuid        NOT NULL REFERENCES core_role (new_id),
+    menu_new_id     uuid        NOT NULL REFERENCES core_menu (new_id),
+    function_new_id uuid        REFERENCES core_menu_function (new_id),
+    is_active       boolean     NOT NULL DEFAULT false,
+    is_active_btn   boolean     NOT NULL DEFAULT false,
+    created_by      varchar(100),
+    created_date    timestamptz NOT NULL DEFAULT now(),
+    updated_by      varchar(100),
+    updated_date    timestamptz
 );
-GO
-CREATE UNIQUE INDEX UX_CORE_RoleMenu_Role_Menu_Function
-    ON [dbo].[CORE_RoleMenu] ([RoleNewId], [MenuNewId], [FunctionNewId]);
-GO
+
+-- NULLs are distinct in unique indexes, so menu rows and function rows each get their own index.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_core_role_menu_menu
+    ON core_role_menu (role_new_id, menu_new_id) WHERE function_new_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_core_role_menu_function
+    ON core_role_menu (role_new_id, menu_new_id, function_new_id) WHERE function_new_id IS NOT NULL;
