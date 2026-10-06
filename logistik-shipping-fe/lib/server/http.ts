@@ -1,4 +1,6 @@
+import { headers } from "next/headers";
 import { NextResponse } from "next/server";
+import { verifyToken } from "@/lib/server/auth";
 
 export class HttpError extends Error {
   constructor(public status: number, message: string) {
@@ -39,9 +41,17 @@ export async function readJson(req: Request): Promise<Record<string, unknown>> {
   return body as Record<string, unknown>;
 }
 
-/** Wraps a route handler: maps HttpError to its status and anything else to 500. */
-export async function handle(fn: () => Promise<NextResponse | Response>) {
+/**
+ * Wraps a route handler: requires a valid `Authorization: Bearer <token>` (unless `isPublic`),
+ * maps HttpError to its status and anything else to 500.
+ */
+export async function handle(fn: () => Promise<NextResponse | Response>, options: { isPublic?: boolean } = {}) {
   try {
+    if (!options.isPublic) {
+      const header = (await headers()).get("authorization") ?? "";
+      const token = header.match(/^Bearer\s+(.+)$/i)?.[1];
+      if (!token || !verifyToken(token)) throw new HttpError(401, "Unauthorized");
+    }
     return await fn();
   } catch (err) {
     if (err instanceof HttpError) return NextResponse.json({ message: err.message }, { status: err.status });
