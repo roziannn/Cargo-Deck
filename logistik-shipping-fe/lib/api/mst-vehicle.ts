@@ -13,6 +13,7 @@ export type MstVehicleItem = {
   dimensionsW: string;
   floorArea: string;
   maxHeight: string;
+  maxPayload: string;
   isActive: boolean;
   createdBy: string;
   createdDate: string;
@@ -29,6 +30,7 @@ export type MstVehiclePayload = {
   dimensions_W_m?: string;
   floorArea_m2?: string;
   maxHeight_m?: string;
+  maxPayload_kg?: string;
   createdBy?: string;
   isActive?: boolean | null;
 };
@@ -139,6 +141,7 @@ function mapVehicle(item: unknown): MstVehicleItem | null {
     dimensionsW: pickString(item, ["dimensionsW", "dimensions_W_m", "DimensionsW", "Dimensions_W_m"]),
     floorArea: pickString(item, ["floorArea", "floorArea_m2", "FloorArea", "FloorArea_m2"]),
     maxHeight: pickString(item, ["maxHeight", "maxHeight_m", "MaxHeight", "MaxHeight_m"]),
+    maxPayload: pickString(item, ["maxPayload", "maxPayload_kg", "MaxPayload"]),
     isActive: pickBoolean(item, ["isActive", "IsActive"], false),
     createdBy: pickString(item, ["createdBy", "createBy", "CreatedBy"], "-"),
     createdDate: pickString(item, ["createdDate", "createdAt", "CreatedDate"], "-"),

@@ -147,6 +147,7 @@ export default function VehiclePage() {
   const [dimensionsW, setDimensionsW] = useState("");
   const [floorArea, setFloorArea] = useState("");
   const [maxHeight, setMaxHeight] = useState("");
+  const [maxPayload, setMaxPayload] = useState("");
   const [isActive, setIsActive] = useState(true);
 
   const [openImport, setOpenImport] = useState(false);
@@ -204,6 +205,7 @@ export default function VehiclePage() {
     setDimensionsW("");
     setFloorArea("");
     setMaxHeight("");
+    setMaxPayload("");
     setIsActive(true);
   }
 
@@ -232,6 +234,7 @@ export default function VehiclePage() {
       setDimensionsW(source.dimensionsW);
       setFloorArea(source.floorArea);
       setMaxHeight(source.maxHeight);
+      setMaxPayload(source.maxPayload);
       setIsActive(source.isActive);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Gagal mengambil detail vehicle.";
@@ -251,6 +254,7 @@ export default function VehiclePage() {
     const normalizedDimensionsW = dimensionsW.trim();
     const normalizedFloorArea = floorArea.trim();
     const normalizedMaxHeight = maxHeight.trim();
+    const normalizedMaxPayload = maxPayload.trim();
 
     if (!normalizedName) {
       toast.error("Name wajib diisi.");
@@ -282,6 +286,7 @@ export default function VehiclePage() {
         dimensions_W_m: normalizedDimensionsW || undefined,
         floorArea_m2: normalizedFloorArea || undefined,
         maxHeight_m: normalizedMaxHeight || undefined,
+        maxPayload_kg: normalizedMaxPayload || undefined,
         isActive,
         createdBy: actor,
       };
@@ -603,6 +608,11 @@ export default function VehiclePage() {
             <div className="space-y-1">
               <Label>Max Height (m)</Label>
               <Input value={maxHeight} onChange={(e) => setMaxHeight(e.target.value)} placeholder="e.g. 2.6" disabled={isSaving && mode === "edit"} />
+            </div>
+
+            <div className="space-y-1">
+              <Label>Max Payload (kg)</Label>
+              <Input value={maxPayload} onChange={(e) => setMaxPayload(e.target.value)} placeholder="e.g. 2500" disabled={isSaving && mode === "edit"} />
             </div>
 
             {mode === "edit" && (

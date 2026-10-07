@@ -11,7 +11,10 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 
 const NotificationBell = dynamic(() => import("@/components/notification-bell").then((m) => m.NotificationBell), { ssr: false });
 
+const UUID_SEGMENT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function titleCaseFromSegment(segment: string) {
+  if (UUID_SEGMENT.test(segment)) return "Detail";
   return segment.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 }
 

@@ -133,8 +133,11 @@ If using cookies for SSO, ensure your auth cookie uses:
 Served by Next.js route handlers under `app/api/v1/*` (no separate backend). Layers:
 `app/api/v1/**/route.ts` → `lib/server/services` → `lib/server/repositories` → PostgreSQL (`lib/server/db.ts`, `pg`).
 
-1. Run on your PostgreSQL database, in order: `../database/001_create_core_access_tables.sql`, then `../database/002_auth_and_seed.sql`
-   (creates login users, the Administrator role, base menus and a default login `admin` / `Admin123!` — change it after first login).
+1. Run on your PostgreSQL database, in order (all are safe to re-run):
+   - `../database/001_create_core_access_tables.sql` — role, role claim, menu, menu function, role menu
+   - `../database/002_auth_and_seed.sql` — login users, the Administrator role, base menus and a default login `admin` / `Admin123!` (change it after first login)
+   - `../database/003_master_vehicle_cubstool.sql` — master vehicle and cubstool
+   - `../database/004_shipping_plan.sql` — locations, shipping plan (+ items, status history), vehicle max payload, menus
 2. In `.env.local` set:
    ```
    DB_HOST=localhost
