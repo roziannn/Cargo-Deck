@@ -1,7 +1,8 @@
 /**
  * 3D cargo packing for the load simulation (all sizes in metres).
  *
- * Boxes keep their real dimensions and may be turned 90 degrees on the floor (never tipped over).
+ * Boxes keep their real dimensions and their own orientation; they are only turned 90 degrees on the floor when
+ * nothing else fits (never tipped over).
  * Heavier cartons are placed first, and every box goes to the lowest free position first (z), then closest to
  * the cab wall (x), then across the width (y). That makes the floor fill completely before anything is stacked, and builds
  * the load as walls from the cab backwards. A box on top of others needs most of its footprint
@@ -43,7 +44,7 @@ const MIN_SUPPORT = 0.75;
 
 /** `dead` remembers box sizes that can never fit here (blocked or out of bounds), so they are not re-checked. */
 type Point = { x: number; y: number; z: number; dead?: Set<string> };
-type Strategy = { sort: (a: PackBox, b: PackBox) => number; preferShortSide: boolean };
+type Strategy = { sort: (a: PackBox, b: PackBox) => number; turnFirst?: boolean };
 
 const area = (b: PackBox) => b.l * b.w;
 
@@ -53,16 +54,10 @@ const BY_WEIGHT: Strategy["sort"] = (a, b) => (b.weight ?? 0) - (a.weight ?? 0) 
 const BY_FOOTPRINT: Strategy["sort"] = (a, b) => area(b) - area(a) || (b.weight ?? 0) - (a.weight ?? 0) || b.h - a.h;
 const BY_HEIGHT: Strategy["sort"] = (a, b) => b.h - a.h || area(b) - area(a) || (b.weight ?? 0) - (a.weight ?? 0);
 
-const PREFERRED: Strategy[] = [
-  { sort: BY_WEIGHT, preferShortSide: true },
-  { sort: BY_WEIGHT, preferShortSide: false },
-];
-const FALLBACK: Strategy[] = [
-  { sort: BY_FOOTPRINT, preferShortSide: true },
-  { sort: BY_FOOTPRINT, preferShortSide: false },
-  { sort: BY_HEIGHT, preferShortSide: true },
-  { sort: BY_HEIGHT, preferShortSide: false },
-];
+// 1) heavy first, cartons keep their orientation  2) heavy first, cartons may be turned  3) weight-blind orders
+const PREFERRED: Strategy[] = [{ sort: BY_WEIGHT }];
+const TURNED: Strategy[] = [{ sort: BY_WEIGHT, turnFirst: true }];
+const FALLBACK: Strategy[] = [{ sort: BY_FOOTPRINT }, { sort: BY_HEIGHT }, { sort: BY_FOOTPRINT, turnFirst: true }];
 
 function collides(x: number, y: number, z: number, dx: number, dy: number, dz: number, placed: PlacedBox[]) {
   for (let i = 0; i < placed.length; i += 1) {
@@ -92,9 +87,11 @@ function runStrategy(boxes: PackBox[], bin: PackBin, strategy: Strategy) {
   let points: Point[] = [{ x: 0, y: 0, z: 0 }];
 
   for (const box of sorted) {
+    // The carton keeps its own orientation (length along the truck); it is only turned when nothing else fits,
+    // so identical cartons stay aligned and the layout does not flip when one more unit is added.
     const orientations: [number, number][] = [[box.l, box.w]];
     if (Math.abs(box.l - box.w) > EPS) orientations.push([box.w, box.l]);
-    if (strategy.preferShortSide) orientations.sort((a, b) => a[0] - b[0]);
+    if (strategy.turnFirst) orientations.reverse();
 
     let found: { point: Point; dx: number; dy: number } | null = null;
 
@@ -202,7 +199,8 @@ export function packCargo(input: PackBox[], rawBin: PackBin): PackResult {
   };
 
   consider(PREFERRED);
-  // Only when the heavy-first order leaves cartons behind do the weight-blind orders get a chance to fit more.
+  // Only when that leaves cartons behind are turned cartons, then weight-blind orders, tried to fit more.
+  if (winner.best && winner.best.unplaced.length > 0) consider(TURNED);
   if (winner.best && winner.best.unplaced.length > 0) consider(FALLBACK);
 
   const result = winner.best as PackResult;

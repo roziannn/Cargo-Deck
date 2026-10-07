@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 import { execute, query, withTransaction } from "@/lib/server/db";
 
-export type ShippingPlanStatus = "DRAFT" | "PLANNED" | "APPROVED" | "CANCELLED";
+export type ShippingPlanStatus = "DRAFT" | "PLANNED" | "APPROVED" | "BOOKED" | "DISPATCHED" | "CANCELLED";
 
 export type ShippingPlanRow = {
   id: number;
@@ -27,6 +27,65 @@ export type ShippingPlanRow = {
   createdDate: Date;
   updatedBy: string | null;
   updatedDate: Date | null;
+  // booking + cost (null until the plan is booked)
+  carrierNewId: string | null;
+  carrierName: string | null;
+  driverNewId: string | null;
+  driverName: string | null;
+  plateNo: string | null;
+  distanceKm: string | null;
+  baseFee: string | null;
+  perKmFee: string | null;
+  freightCost: string | null;
+  loadingFee: string | null;
+  otherFee: string | null;
+  totalCost: string | null;
+  bookingNotes: string | null;
+  deliveryNoteNo: string | null;
+  dispatchedAt: Date | null;
+  // inputs for the cost estimate
+  originLatitude: number | null;
+  originLongitude: number | null;
+  destinationLatitude: number | null;
+  destinationLongitude: number | null;
+  vehicleBaseFee: string | null;
+  vehicleRatePerKm: string | null;
+};
+
+export type BookingInput = {
+  carrierNewId: string;
+  driverNewId: string;
+  plateNo: string;
+  distanceKm: number;
+  baseFee: number;
+  perKmFee: number;
+  freightCost: number;
+  loadingFee: number;
+  otherFee: number;
+  totalCost: number;
+  bookingNotes: string | null;
+};
+
+export type DeliveryNoteRow = {
+  deliveryNoteNo: string | null;
+  dispatchedAt: Date | null;
+  originName: string;
+  originAddress: string | null;
+  originCity: string | null;
+  originContact: string | null;
+  originPhone: string | null;
+  destinationName: string;
+  destinationAddress: string | null;
+  destinationCity: string | null;
+  destinationContact: string | null;
+  destinationPhone: string | null;
+  vehicleType: string | null;
+  vehicleName: string | null;
+  carrierName: string | null;
+  carrierType: string | null;
+  driverName: string | null;
+  driverPhone: string | null;
+  driverLicenseNo: string | null;
 };
 
 export type ShippingPlanItemRow = {
@@ -65,11 +124,20 @@ const SELECT = `
          p.priority, p.special_handling, p.notes,
          p.vehicle_new_id, v.name AS vehicle_name, trim_scale(v.max_payload)::text AS vehicle_max_payload,
          p.total_units, trim_scale(p.total_weight_kg)::text AS total_weight_kg, trim_scale(p.utilization_pct)::text AS utilization_pct,
-         p.created_by, p.created_date, p.updated_by, p.updated_date
+         p.created_by, p.created_date, p.updated_by, p.updated_date,
+         p.carrier_new_id, ca.name AS carrier_name, p.driver_new_id, dr.name AS driver_name, p.plate_no,
+         trim_scale(p.distance_km)::text AS distance_km, p.base_fee::text AS base_fee, p.per_km_fee::text AS per_km_fee,
+         p.freight_cost::text AS freight_cost, p.loading_fee::text AS loading_fee, p.other_fee::text AS other_fee,
+         p.total_cost::text AS total_cost, p.booking_notes, p.delivery_note_no, p.dispatched_at,
+         o.latitude::float8 AS origin_latitude, o.longitude::float8 AS origin_longitude,
+         d.latitude::float8 AS destination_latitude, d.longitude::float8 AS destination_longitude,
+         v.base_fee::text AS vehicle_base_fee, v.rate_per_km::text AS vehicle_rate_per_km
   FROM shipping_plan p
   JOIN mst_location o ON o.new_id = p.origin_location_new_id
   JOIN mst_location d ON d.new_id = p.destination_location_new_id
-  LEFT JOIN mst_vehicle v ON v.new_id = p.vehicle_new_id`;
+  LEFT JOIN mst_vehicle v ON v.new_id = p.vehicle_new_id
+  LEFT JOIN mst_carrier ca ON ca.new_id = p.carrier_new_id
+  LEFT JOIN mst_driver dr ON dr.new_id = p.driver_new_id`;
 
 async function addHistory(tx: PoolClient, planNewId: string, from: string | null, to: string, note: string | null, by: string) {
   await execute(
@@ -176,5 +244,64 @@ export const shippingPlanRepository = {
       await addHistory(tx, newId, from, to, note, by);
       return true;
     });
+  },
+
+  /** Stores the booking (carrier, driver, plate, cost snapshot) and moves the plan to BOOKED. */
+  saveBooking(newId: string, input: BookingInput, by: string, from: ShippingPlanStatus, note: string) {
+    return withTransaction(async (tx) => {
+      const rows = await execute(
+        `UPDATE shipping_plan
+         SET carrier_new_id = @carrierNewId, driver_new_id = @driverNewId, plate_no = @plateNo, distance_km = @distanceKm,
+             base_fee = @baseFee, per_km_fee = @perKmFee, freight_cost = @freightCost, loading_fee = @loadingFee,
+             other_fee = @otherFee, total_cost = @totalCost, booking_notes = @bookingNotes,
+             status = 'BOOKED', updated_by = @by, updated_date = now()
+         WHERE new_id = @newId AND status = @from`,
+        { ...input, newId, by, from },
+        tx,
+      );
+      if (rows === 0) return false;
+      await addHistory(tx, newId, from, "BOOKED", note, by);
+      return true;
+    });
+  },
+
+  /** Issues the delivery note number and marks the plan as dispatched. */
+  dispatch(newId: string, by: string) {
+    return withTransaction(async (tx) => {
+      const rows = await query<{ deliveryNoteNo: string }>(
+        `UPDATE shipping_plan
+         SET status = 'DISPATCHED', dispatched_at = now(), updated_by = @by, updated_date = now(),
+             delivery_note_no = 'SJ-' || to_char(now(), 'YYMM') || '-' || lpad(nextval('delivery_note_no_seq')::text, 4, '0')
+         WHERE new_id = @newId AND status = 'BOOKED'
+         RETURNING delivery_note_no`,
+        { newId, by },
+        tx,
+      );
+      if (rows.length === 0) return null;
+      await addHistory(tx, newId, "BOOKED", "DISPATCHED", `Surat jalan ${rows[0].deliveryNoteNo} diterbitkan`, by);
+      return rows[0].deliveryNoteNo;
+    });
+  },
+
+  async getDeliveryNote(newId: string) {
+    const rows = await query<DeliveryNoteRow>(
+      `SELECT p.delivery_note_no, p.dispatched_at,
+              o.name AS origin_name, o.address AS origin_address, o.city AS origin_city,
+              o.contact_name AS origin_contact, o.contact_phone AS origin_phone,
+              d.name AS destination_name, d.address AS destination_address, d.city AS destination_city,
+              d.contact_name AS destination_contact, d.contact_phone AS destination_phone,
+              v.type AS vehicle_type, v.name AS vehicle_name,
+              ca.name AS carrier_name, ca.type AS carrier_type,
+              dr.name AS driver_name, dr.phone AS driver_phone, dr.license_no AS driver_license_no
+       FROM shipping_plan p
+       JOIN mst_location o ON o.new_id = p.origin_location_new_id
+       JOIN mst_location d ON d.new_id = p.destination_location_new_id
+       LEFT JOIN mst_vehicle v ON v.new_id = p.vehicle_new_id
+       LEFT JOIN mst_carrier ca ON ca.new_id = p.carrier_new_id
+       LEFT JOIN mst_driver dr ON dr.new_id = p.driver_new_id
+       WHERE p.new_id = @newId`,
+      { newId },
+    );
+    return rows[0] ?? null;
   },
 };

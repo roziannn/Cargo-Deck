@@ -148,6 +148,8 @@ export default function VehiclePage() {
   const [floorArea, setFloorArea] = useState("");
   const [maxHeight, setMaxHeight] = useState("");
   const [maxPayload, setMaxPayload] = useState("");
+  const [baseFee, setBaseFee] = useState("");
+  const [ratePerKm, setRatePerKm] = useState("");
   const [isActive, setIsActive] = useState(true);
 
   const [openImport, setOpenImport] = useState(false);
@@ -206,6 +208,8 @@ export default function VehiclePage() {
     setFloorArea("");
     setMaxHeight("");
     setMaxPayload("");
+    setBaseFee("");
+    setRatePerKm("");
     setIsActive(true);
   }
 
@@ -235,6 +239,8 @@ export default function VehiclePage() {
       setFloorArea(source.floorArea);
       setMaxHeight(source.maxHeight);
       setMaxPayload(source.maxPayload);
+      setBaseFee(source.baseFee);
+      setRatePerKm(source.ratePerKm);
       setIsActive(source.isActive);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Gagal mengambil detail vehicle.";
@@ -287,6 +293,8 @@ export default function VehiclePage() {
         floorArea_m2: normalizedFloorArea || undefined,
         maxHeight_m: normalizedMaxHeight || undefined,
         maxPayload_kg: normalizedMaxPayload || undefined,
+        baseFee: baseFee.trim() || undefined,
+        ratePerKm: ratePerKm.trim() || undefined,
         isActive,
         createdBy: actor,
       };
@@ -613,6 +621,17 @@ export default function VehiclePage() {
             <div className="space-y-1">
               <Label>Max Payload (kg)</Label>
               <Input value={maxPayload} onChange={(e) => setMaxPayload(e.target.value)} placeholder="e.g. 2500" disabled={isSaving && mode === "edit"} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label>Base Fee (Rp / trip)</Label>
+                <Input value={baseFee} onChange={(e) => setBaseFee(e.target.value)} placeholder="e.g. 400000" disabled={isSaving && mode === "edit"} />
+              </div>
+              <div className="space-y-1">
+                <Label>Rate per km (Rp)</Label>
+                <Input value={ratePerKm} onChange={(e) => setRatePerKm(e.target.value)} placeholder="e.g. 6000" disabled={isSaving && mode === "edit"} />
+              </div>
             </div>
 
             {mode === "edit" && (
