@@ -136,7 +136,7 @@ export function ShippingLoadingDialog({
             </div>
 
             <div className="space-y-2">
-              <Label>Timbang (kg)</Label>
+              <Label>Timbang (kg, opsional)</Label>
               <div className="grid grid-cols-2 gap-3">
                 <Input value={tare} onChange={(e) => setTare(decimal(e.target.value))} placeholder="Berat kosong" inputMode="decimal" />
                 <Input value={gross} onChange={(e) => setGross(decimal(e.target.value))} placeholder="Berat isi" inputMode="decimal" />
