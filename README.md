@@ -2,7 +2,7 @@
 
 Aplikasi web untuk merencanakan dan memantau pengiriman barang lewat jalur darat di dalam negeri. Titik awalnya adalah rencana pengiriman (shipping plan): dari mana barang berangkat, ke mana tujuannya, kapan harus tiba, lalu barangnya ditata dulu di dalam truk lewat simulasi 3D sebelum rencana itu disetujui.
 
-Yang sudah jalan: perencanaan, approval, booking armada dengan estimasi biaya, dan surat jalan. Tahap sesudahnya (loading, tracking, bukti terima) belum dibuat, lihat bagian [Yang belum selesai](#yang-belum-selesai). Cakupannya angkutan darat domestik, jadi tidak ada dokumen ekspor-impor atau bea cukai.
+Yang sudah jalan: perencanaan, approval, booking armada dengan estimasi biaya, dan surat jalan. Tahap sesudahnya (tracking, bukti terima) belum dibuat, lihat bagian [Yang belum selesai](#yang-belum-selesai). Cakupannya angkutan darat domestik, jadi tidak ada dokumen ekspor-impor atau bea cukai.
 
 Semua kode ada di satu aplikasi Next.js. Tidak ada backend terpisah: halaman, API, dan akses database sama-sama berada di folder `logistik-shipping-fe`.
 
@@ -18,17 +18,19 @@ Shipping Plan -> Simulasi muatan -> Approval -> Booking armada -> Picking/packin
 Sampai dengan surat jalan dan dispatch sudah ada. Siklus status satu plan:
 
 ```
-DRAFT -> PLANNED -> APPROVED -> BOOKED -> DISPATCHED
-   \         \          \          \
-    +---------+----------+----------+--> CANCELLED
+DRAFT -> PLANNED -> APPROVED -> BOOKED -> PICKING -> LOADING -> DISPATCHED
+   \         \          \          \          \          \
+    +---------+----------+----------+----------+----------+--> CANCELLED
 ```
 
 - `DRAFT`: header plan sudah diisi (origin, tujuan, tanggal, prioritas), belum ada muatan.
 - `PLANNED`: simulasi muatan sudah disimpan ke plan (kendaraan, barang, jumlah).
 - `APPROVED`: plan disetujui. Setelah ini muatan dan data plan tidak bisa diubah lagi.
 - `BOOKED`: carrier, driver, nomor polisi, dan biaya sudah ditetapkan. Booking masih bisa diubah.
+- `PICKING`: barang diambil dari gudang dan dikemas. Jumlah yang benar-benar di-pick dicatat per barang; kalau kurang dari rencana, catatan wajib diisi.
+- `LOADING`: pemuatan ke truk. Dicatat checklist kendaraan (dokumen/KIR, kebersihan, kondisi, driver siap, muatan terikat), nomor segel, suhu (wajib untuk cold chain), timbang (bruto dan tara), dan jumlah yang benar-benar dimuat. Dispatch baru bisa kalau semuanya lengkap dan berat netto tidak melebihi kapasitas.
 - `DISPATCHED`: surat jalan sudah diterbitkan dan truk berangkat. Booking dan plan terkunci.
-- `CANCELLED`: dibatalkan, wajib ada alasan. Bisa dilakukan sampai `BOOKED`, tidak bisa lagi setelah `DISPATCHED`. Tidak bisa dibuka lagi.
+- `CANCELLED`: dibatalkan, wajib ada alasan. Bisa dilakukan sampai `LOADING`, tidak bisa lagi setelah `DISPATCHED`. Tidak bisa dibuka lagi.
 
 Setiap perpindahan status dicatat di riwayat plan lengkap dengan siapa dan kapan.
 
@@ -61,12 +63,12 @@ Di sisi server alurnya selalu sama: `route.ts` menerima request, `services` beri
 
 Butuh PostgreSQL 13 atau lebih baru (skrip memakai `gen_random_uuid()` dan `trim_scale()`).
 
-Skrip SQL ada di folder `database/` dan harus dijalankan berurutan (001 sampai 007). Semuanya aman diulang. Cara paling mudah adalah lewat perintah migrasi, yang membaca koneksi dari `.env.local` (lihat di bawah) dan menjalankan semua file dalam urutan yang benar:
+Skrip SQL ada di folder `database/` dan harus dijalankan berurutan (001 sampai 008). Semuanya aman diulang. Cara paling mudah adalah lewat perintah migrasi, yang membaca koneksi dari `.env.local` (lihat di bawah) dan menjalankan semua file dalam urutan yang benar:
 
 ```bash
 cd logistik-shipping-fe
 pnpm db:migrate         # semua file
-pnpm db:migrate 7       # hanya dari file 007 ke atas
+pnpm db:migrate 8       # hanya dari file 008 ke atas
 ```
 
 Tiap file dijalankan sebagai satu kesatuan: kalau ada yang gagal, file itu tidak diterapkan sama sekali, dan pesan errornya menyebut nomor barisnya. Perintah ini memakai database yang sama dengan aplikasi, jadi buat `.env.local` dulu.
@@ -121,6 +123,7 @@ Nama tabel dan kolom memakai snake_case. API mengubahnya jadi camelCase di `lib/
 | 005 | unique index username dan email (tanpa membedakan huruf besar-kecil), menu Settings > User |
 | 006 | data contoh: 33 kendaraan, 32 barang (cubstool), 39 lokasi (8 gudang, 31 customer) |
 | 007 | `mst_carrier`, `mst_driver`, kolom booking dan biaya di `shipping_plan`, tarif di kendaraan, koordinat di lokasi, status `BOOKED` dan `DISPATCHED`, menu Carrier dan Driver. Berisi juga data contoh: 33 carrier, 32 driver, tarif per jenis kendaraan, koordinat kota |
+| 008 | kolom picking dan loading di `shipping_plan` dan `shipping_plan_item` (jumlah di-pick/dimuat, checklist, segel, suhu, timbang), status `PICKING` dan `LOADING` |
 
 Tabel master, role, menu, dan plan punya `id` (identity) dan `new_id` (uuid). Relasi antar tabel dan URL di API memakai `new_id`, bukan `id`.
 
@@ -154,6 +157,9 @@ Semua di bawah `/api/v1`. Format JSON, nama field camelCase.
 | `ShippingPlan/{id}/status` | `{ "action": "approve" }` atau `{ "action": "cancel", "note": "..." }` |
 | `ShippingPlan/{id}/estimate` | estimasi biaya kirim; opsional `?distanceKm=&loadingFee=&otherFee=` |
 | `ShippingPlan/{id}/booking` | `PUT` carrier, driver, nomor polisi, biaya tambahan (plan harus `APPROVED` atau `BOOKED`) |
+| `ShippingPlan/{id}/start-picking` | `POST`, `BOOKED` -> `PICKING` |
+| `ShippingPlan/{id}/picking` | `PUT` jumlah di-pick per barang, catatan, `complete` untuk lanjut ke `LOADING` |
+| `ShippingPlan/{id}/loading` | `PUT` jumlah dimuat, checklist, suhu, nomor segel, bruto/tara, catatan (plan harus `LOADING`) |
 | `ShippingPlan/{id}/dispatch` | `POST`, menerbitkan nomor surat jalan dan mengubah status ke `DISPATCHED` |
 | `ShippingPlan/{id}/delivery-note` | data untuk mencetak surat jalan (preview kalau belum dispatch) |
 | `MstCarrier`, `MstDriver` | master carrier dan driver, dengan `lov-carrier` dan `lov-driver` |
@@ -199,7 +205,7 @@ total         = ongkos angkut + biaya muat + biaya lain
 
 Biaya dasar dan tarif per km diisi per kendaraan di Master Vehicle. Jarak diperkirakan dari koordinat lokasi asal dan tujuan (jarak garis lurus dikali 1,3 sebagai perkiraan jalan), atau diisi manual saat booking kalau lokasinya belum punya koordinat. Perkiraan ini tidak tahu rute sebenarnya: untuk pulau yang berbeda misalnya tidak memperhitungkan kapal. Tarif belum dibedakan per carrier. Saat booking disimpan, angka biaya difoto ke plan sehingga tidak berubah kalau tarif kendaraan diedit kemudian.
 
-**Terbitkan Surat Jalan & Berangkatkan** memberi nomor surat jalan (`SJ-YYMM-0001`), mencatat waktu berangkat, dan mengunci plan. Halaman `surat-jalan/{id}` berisi pengirim, penerima, kendaraan, carrier, driver, daftar barang dengan total jumlah dan berat, catatan, dan kolom tanda tangan pengirim, driver, penerima. Halaman itu dioptimalkan untuk A4: tombol cetak membuka dialog cetak browser, dan hasilnya bisa disimpan sebagai PDF. Sebelum dispatch, halaman yang sama tampil sebagai preview dengan watermark dan tanpa nomor. Surat jalan tidak memuat harga.
+**Terbitkan Surat Jalan & Berangkatkan** memberi nomor surat jalan (`SJ-YYMM-0001`), mencatat waktu berangkat, dan mengunci plan. Halaman `surat-jalan/{id}` berisi pengirim, penerima, kendaraan, carrier, driver, daftar barang dengan total jumlah dan berat, catatan, dan kolom tanda tangan pengirim, driver, penerima. Halaman itu dioptimalkan untuk A4: tombol cetak membuka dialog cetak browser, dan hasilnya bisa disimpan sebagai PDF. Sebelum dispatch, halaman yang sama tampil sebagai preview dengan watermark dan tanpa nomor. Surat jalan memakai jumlah yang benar-benar dimuat (jumlah rencana ikut tampil kalau berbeda), serta memuat nomor segel, berat timbang netto, dan suhu saat muat. Surat jalan tidak memuat harga.
 
 ## Yang belum selesai
 
@@ -207,9 +213,8 @@ Beberapa halaman masih memanggil API dari backend lama (.NET) yang sudah tidak d
 
 Untuk alur pengirimannya sendiri, rencana tahap berikutnya:
 
-1. Loading: checklist muat (kondisi kendaraan, suhu), nomor segel, timbang.
-2. Tracking dan POD: checkpoint, ETA, bukti terima, selisih barang.
-3. Exception, klaim, dan laporan (on-time, utilisasi muatan, biaya per kg).
+1. Tracking dan POD: checkpoint, ETA, bukti terima, selisih barang.
+2. Exception, klaim, dan laporan (on-time, utilisasi muatan, biaya per kg).
 
 Approval plan sekarang belum dibatasi per role, siapa pun yang login bisa menyetujui.
 

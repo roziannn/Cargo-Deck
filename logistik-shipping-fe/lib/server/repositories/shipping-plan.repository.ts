@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 import { execute, query, withTransaction } from "@/lib/server/db";
 
-export type ShippingPlanStatus = "DRAFT" | "PLANNED" | "APPROVED" | "BOOKED" | "DISPATCHED" | "CANCELLED";
+export type ShippingPlanStatus = "DRAFT" | "PLANNED" | "APPROVED" | "BOOKED" | "PICKING" | "LOADING" | "DISPATCHED" | "CANCELLED";
 
 export type ShippingPlanRow = {
   id: number;
@@ -43,6 +43,18 @@ export type ShippingPlanRow = {
   bookingNotes: string | null;
   deliveryNoteNo: string | null;
   dispatchedAt: Date | null;
+  // picking, loading checklist, seal and weighbridge
+  pickingNotes: string | null;
+  chkVehiclePapers: boolean;
+  chkVehicleClean: boolean;
+  chkVehicleCondition: boolean;
+  chkDriverReady: boolean;
+  chkCargoSecured: boolean;
+  loadingTempC: number | null;
+  sealNo: string | null;
+  grossWeightKg: string | null;
+  tareWeightKg: string | null;
+  loadingNotes: string | null;
   // inputs for the cost estimate
   originLatitude: number | null;
   originLongitude: number | null;
@@ -94,6 +106,24 @@ export type ShippingPlanItemRow = {
   itemName: string;
   unitWeightKg: string | null;
   qty: number;
+  pickedQty: number | null;
+  loadedQty: number | null;
+};
+
+export type PickingInput = { items: { cubstoolNewId: string; pickedQty: number }[]; notes: string | null };
+
+export type LoadingInput = {
+  items: { cubstoolNewId: string; loadedQty: number }[];
+  chkVehiclePapers: boolean;
+  chkVehicleClean: boolean;
+  chkVehicleCondition: boolean;
+  chkDriverReady: boolean;
+  chkCargoSecured: boolean;
+  loadingTempC: number | null;
+  sealNo: string | null;
+  grossWeightKg: number | null;
+  tareWeightKg: number | null;
+  notes: string | null;
 };
 
 export type ShippingPlanHistoryRow = {
@@ -129,6 +159,9 @@ const SELECT = `
          trim_scale(p.distance_km)::text AS distance_km, p.base_fee::text AS base_fee, p.per_km_fee::text AS per_km_fee,
          p.freight_cost::text AS freight_cost, p.loading_fee::text AS loading_fee, p.other_fee::text AS other_fee,
          p.total_cost::text AS total_cost, p.booking_notes, p.delivery_note_no, p.dispatched_at,
+         p.picking_notes, p.chk_vehicle_papers, p.chk_vehicle_clean, p.chk_vehicle_condition, p.chk_driver_ready, p.chk_cargo_secured,
+         p.loading_temp_c::float8 AS loading_temp_c, p.seal_no,
+         trim_scale(p.gross_weight_kg)::text AS gross_weight_kg, trim_scale(p.tare_weight_kg)::text AS tare_weight_kg, p.loading_notes,
          o.latitude::float8 AS origin_latitude, o.longitude::float8 AS origin_longitude,
          d.latitude::float8 AS destination_latitude, d.longitude::float8 AS destination_longitude,
          v.base_fee::text AS vehicle_base_fee, v.rate_per_km::text AS vehicle_rate_per_km
@@ -158,7 +191,7 @@ export const shippingPlanRepository = {
 
   getItems: (planNewId: string) =>
     query<ShippingPlanItemRow>(
-      `SELECT cubstool_new_id, item_code, item_name, trim_scale(unit_weight_kg)::text AS unit_weight_kg, qty
+      `SELECT cubstool_new_id, item_code, item_name, trim_scale(unit_weight_kg)::text AS unit_weight_kg, qty, picked_qty, loaded_qty
        FROM shipping_plan_item WHERE plan_new_id = @planNewId ORDER BY id`,
       { planNewId },
     ),
@@ -272,13 +305,13 @@ export const shippingPlanRepository = {
         `UPDATE shipping_plan
          SET status = 'DISPATCHED', dispatched_at = now(), updated_by = @by, updated_date = now(),
              delivery_note_no = 'SJ-' || to_char(now(), 'YYMM') || '-' || lpad(nextval('delivery_note_no_seq')::text, 4, '0')
-         WHERE new_id = @newId AND status = 'BOOKED'
+         WHERE new_id = @newId AND status = 'LOADING'
          RETURNING delivery_note_no`,
         { newId, by },
         tx,
       );
       if (rows.length === 0) return null;
-      await addHistory(tx, newId, "BOOKED", "DISPATCHED", `Surat jalan ${rows[0].deliveryNoteNo} diterbitkan`, by);
+      await addHistory(tx, newId, "LOADING", "DISPATCHED", `Surat jalan ${rows[0].deliveryNoteNo} diterbitkan`, by);
       return rows[0].deliveryNoteNo;
     });
   },
@@ -303,5 +336,57 @@ export const shippingPlanRepository = {
       { newId },
     );
     return rows[0] ?? null;
+  },
+
+  /** Saves the picked quantities; with `complete` the plan also moves from PICKING to LOADING. Returns false if the status changed meanwhile. */
+  savePicking(newId: string, input: PickingInput, complete: boolean, by: string, completeNote: string) {
+    return withTransaction(async (tx) => {
+      const locked = await query<{ status: string }>("SELECT status FROM shipping_plan WHERE new_id = @newId FOR UPDATE", { newId }, tx);
+      if (locked[0]?.status !== "PICKING") return false;
+
+      for (const item of input.items) {
+        await execute(
+          "UPDATE shipping_plan_item SET picked_qty = @pickedQty WHERE plan_new_id = @newId AND cubstool_new_id = @cubstoolNewId",
+          { newId, cubstoolNewId: item.cubstoolNewId, pickedQty: item.pickedQty },
+          tx,
+        );
+      }
+      await execute(
+        `UPDATE shipping_plan SET picking_notes = @notes, updated_by = @by, updated_date = now(),
+                status = CASE WHEN @complete THEN 'LOADING' ELSE status END
+         WHERE new_id = @newId`,
+        { newId, notes: input.notes, by, complete },
+        tx,
+      );
+      if (complete) await addHistory(tx, newId, "PICKING", "LOADING", completeNote, by);
+      return true;
+    });
+  },
+
+  /** Saves the loading checklist, seal, weighbridge readings and the quantities really loaded. */
+  saveLoading(newId: string, input: LoadingInput, by: string) {
+    return withTransaction(async (tx) => {
+      const locked = await query<{ status: string }>("SELECT status FROM shipping_plan WHERE new_id = @newId FOR UPDATE", { newId }, tx);
+      if (locked[0]?.status !== "LOADING") return false;
+
+      for (const item of input.items) {
+        await execute(
+          "UPDATE shipping_plan_item SET loaded_qty = @loadedQty WHERE plan_new_id = @newId AND cubstool_new_id = @cubstoolNewId",
+          { newId, cubstoolNewId: item.cubstoolNewId, loadedQty: item.loadedQty },
+          tx,
+        );
+      }
+      await execute(
+        `UPDATE shipping_plan
+         SET chk_vehicle_papers = @chkVehiclePapers, chk_vehicle_clean = @chkVehicleClean, chk_vehicle_condition = @chkVehicleCondition,
+             chk_driver_ready = @chkDriverReady, chk_cargo_secured = @chkCargoSecured, loading_temp_c = @loadingTempC,
+             seal_no = @sealNo, gross_weight_kg = @grossWeightKg, tare_weight_kg = @tareWeightKg, loading_notes = @notes,
+             updated_by = @by, updated_date = now()
+         WHERE new_id = @newId`,
+        { newId, by, ...input },
+        tx,
+      );
+      return true;
+    });
   },
 };

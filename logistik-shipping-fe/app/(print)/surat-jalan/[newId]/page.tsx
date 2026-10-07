@@ -52,8 +52,11 @@ export default function DeliveryNotePage() {
   if (!data) return <div className="p-8 text-sm text-neutral-600">Memuat surat jalan...</div>;
 
   const { plan, note, items, preview } = data;
-  const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
-  const totalWeight = items.reduce((sum, item) => sum + (item.unitWeightKg ? Number(item.unitWeightKg) * item.qty : 0), 0);
+  // what is printed is what was really loaded; before loading is recorded the plan quantity stands in
+  const sent = (item: (typeof items)[number]) => item.loadedQty ?? item.qty;
+  const totalQty = items.reduce((sum, item) => sum + sent(item), 0);
+  const totalWeight = items.reduce((sum, item) => sum + (item.unitWeightKg ? Number(item.unitWeightKg) * sent(item) : 0), 0);
+  const netWeight = plan.grossWeightKg && plan.tareWeightKg ? +(Number(plan.grossWeightKg) - Number(plan.tareWeightKg)).toFixed(2) : null;
   const issuedAt = note.dispatchedAt ? formatPlanDateTime(note.dispatchedAt) : null;
 
   return (
@@ -114,6 +117,9 @@ export default function DeliveryNotePage() {
             <Info label="Driver" value={note.driverName ?? ""} />
             <Info label="Penanganan khusus" value={plan.specialHandling ? (HANDLING[plan.specialHandling] ?? plan.specialHandling) : "Tidak ada"} />
             <Info label="No. HP / SIM" value={[note.driverPhone, note.driverLicenseNo].filter(Boolean).join(" / ")} />
+            <Info label="No. Segel" value={plan.sealNo ?? ""} />
+            <Info label="Berat timbang (netto)" value={netWeight !== null ? `${netWeight} kg` : ""} />
+            {plan.loadingTempC !== null && <Info label="Suhu saat muat" value={`${plan.loadingTempC} °C`} />}
           </div>
 
           <table className="w-full border-collapse text-xs">
@@ -122,7 +128,7 @@ export default function DeliveryNotePage() {
                 <th className="w-8 border border-black px-2 py-1.5 text-center">No</th>
                 <th className="w-24 border border-black px-2 py-1.5 text-left">Kode</th>
                 <th className="border border-black px-2 py-1.5 text-left">Nama barang</th>
-                <th className="w-20 border border-black px-2 py-1.5 text-right">Jumlah (karton)</th>
+                <th className="w-24 border border-black px-2 py-1.5 text-right">Dikirim (karton)</th>
                 <th className="w-24 border border-black px-2 py-1.5 text-right">Berat satuan (kg)</th>
                 <th className="w-24 border border-black px-2 py-1.5 text-right">Berat total (kg)</th>
               </tr>
@@ -133,9 +139,12 @@ export default function DeliveryNotePage() {
                   <td className="border border-black px-2 py-1 text-center">{index + 1}</td>
                   <td className="border border-black px-2 py-1">{item.itemCode}</td>
                   <td className="border border-black px-2 py-1">{item.itemName}</td>
-                  <td className="border border-black px-2 py-1 text-right">{item.qty}</td>
+                  <td className="border border-black px-2 py-1 text-right">
+                    {sent(item)}
+                    {sent(item) !== item.qty && <div className="text-[10px] font-normal text-neutral-600">rencana {item.qty}</div>}
+                  </td>
                   <td className="border border-black px-2 py-1 text-right">{item.unitWeightKg ?? "-"}</td>
-                  <td className="border border-black px-2 py-1 text-right">{item.unitWeightKg ? +(Number(item.unitWeightKg) * item.qty).toFixed(2) : "-"}</td>
+                  <td className="border border-black px-2 py-1 text-right">{item.unitWeightKg ? +(Number(item.unitWeightKg) * sent(item)).toFixed(2) : "-"}</td>
                 </tr>
               ))}
               <tr className="font-semibold">

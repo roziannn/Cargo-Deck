@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Check, ChevronLeft, FileText, Truck } from "lucide-react";
+import { AlertTriangle, Check, ChevronLeft, CircleCheck, CircleDashed, FileText, PackageCheck, Truck } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
 
 import { ShippingBookingDialog } from "@/components/shipping-booking-dialog";
+import { ShippingLoadingDialog } from "@/components/shipping-loading-dialog";
+import { ShippingPickingDialog } from "@/components/shipping-picking-dialog";
 import { PlanStatusBadge, PriorityBadge } from "@/components/shipping-plan-status";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -20,6 +22,7 @@ import {
   formatRupiah,
   getShippingPlan,
   getShippingPlanEstimate,
+  startShippingPlanPicking,
   type FreightEstimate,
   type ShippingPlanDetail,
   type ShippingPlanStatus,
@@ -31,6 +34,8 @@ const STEPS: { status: ShippingPlanStatus; label: string }[] = [
   { status: "PLANNED", label: "Load planned" },
   { status: "APPROVED", label: "Approved" },
   { status: "BOOKED", label: "Booked" },
+  { status: "PICKING", label: "Picking & packing" },
+  { status: "LOADING", label: "Loading" },
   { status: "DISPATCHED", label: "Dispatched" },
 ];
 
@@ -55,6 +60,8 @@ export default function ShippingPlanDetailPage() {
   const [reason, setReason] = useState("");
   const [openBooking, setOpenBooking] = useState(false);
   const [openDispatch, setOpenDispatch] = useState(false);
+  const [openPicking, setOpenPicking] = useState(false);
+  const [openLoading, setOpenLoading] = useState(false);
   const [estimate, setEstimate] = useState<FreightEstimate | null>(null);
 
   const load = useCallback(async () => {
@@ -83,6 +90,20 @@ export default function ShippingPlanDetailPage() {
       alive = false;
     };
   }, [needsEstimate, newId, plan?.vehicleNewId, plan?.updatedDate]);
+
+  async function runStartPicking() {
+    setIsBusy(true);
+    try {
+      setPlan(await startShippingPlanPicking(newId, getStoredAuthToken() ?? undefined));
+      toast.success("Picking & packing dimulai.");
+      setOpenPicking(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal memulai picking.");
+      await load();
+    } finally {
+      setIsBusy(false);
+    }
+  }
 
   async function runDispatch() {
     setIsBusy(true);
@@ -123,6 +144,7 @@ export default function ShippingPlanDetailPage() {
   const payload = plan.vehicleMaxPayload ? Number(plan.vehicleMaxPayload) : null;
   const overweight = payload !== null && weight > payload;
   const stepIndex = STEPS.findIndex((s) => s.status === plan.status);
+  const showActuals = plan.status === "PICKING" || plan.status === "LOADING" || plan.status === "DISPATCHED";
 
   return (
     <div className="min-h-screen space-y-6 p-6 dark:bg-zinc-900">
@@ -174,8 +196,28 @@ export default function ShippingPlanDetailPage() {
                   <FileText className="mr-2 h-4 w-4" /> Preview Surat Jalan
                 </Link>
               </Button>
-              <Button onClick={() => setOpenDispatch(true)} disabled={isBusy}>
-                Terbitkan Surat Jalan & Berangkatkan
+              <Button onClick={() => void runStartPicking()} disabled={isBusy}>
+                <PackageCheck className="mr-2 h-4 w-4" /> Mulai Picking &amp; Packing
+              </Button>
+            </>
+          )}
+          {plan.status === "PICKING" && (
+            <Button onClick={() => setOpenPicking(true)} disabled={isBusy}>
+              <PackageCheck className="mr-2 h-4 w-4" /> Input Hasil Picking
+            </Button>
+          )}
+          {plan.status === "LOADING" && (
+            <>
+              <Button variant={plan.readiness.complete ? "outline" : "default"} onClick={() => setOpenLoading(true)} disabled={isBusy}>
+                <Truck className="mr-2 h-4 w-4" /> Input Data Loading
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href={`/surat-jalan/${plan.newId}`}>
+                  <FileText className="mr-2 h-4 w-4" /> Preview Surat Jalan
+                </Link>
+              </Button>
+              <Button onClick={() => setOpenDispatch(true)} disabled={isBusy || !plan.readiness.complete} title={plan.readiness.complete ? undefined : "Lengkapi data loading dulu"}>
+                Terbitkan Surat Jalan &amp; Berangkatkan
               </Button>
             </>
           )}
@@ -259,6 +301,8 @@ export default function ShippingPlanDetailPage() {
                     <TableHead>Item</TableHead>
                     <TableHead className="text-right">Unit weight (kg)</TableHead>
                     <TableHead className="text-right">Qty</TableHead>
+                    {showActuals && <TableHead className="text-right">Di-pick</TableHead>}
+                    {showActuals && <TableHead className="text-right">Dimuat</TableHead>}
                     <TableHead className="text-right">Weight (kg)</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -269,6 +313,12 @@ export default function ShippingPlanDetailPage() {
                       <TableCell>{item.itemName}</TableCell>
                       <TableCell className="text-right">{item.unitWeightKg ?? "-"}</TableCell>
                       <TableCell className="text-right">{item.qty}</TableCell>
+                      {showActuals && (
+                        <TableCell className={cn("text-right", item.pickedQty !== null && item.pickedQty < item.qty && "font-medium text-amber-700")}>{item.pickedQty ?? "-"}</TableCell>
+                      )}
+                      {showActuals && (
+                        <TableCell className={cn("text-right", item.loadedQty !== null && item.loadedQty < item.qty && "font-medium text-amber-700")}>{item.loadedQty ?? "-"}</TableCell>
+                      )}
                       <TableCell className="text-right">{item.unitWeightKg ? +(Number(item.unitWeightKg) * item.qty).toFixed(2) : "-"}</TableCell>
                     </TableRow>
                   ))}
@@ -324,6 +374,95 @@ export default function ShippingPlanDetailPage() {
         </div>
       ) : null}
 
+      {showActuals && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold">Picking &amp; Packing</h2>
+          {(() => {
+            const planned = plan.items.reduce((sum, item) => sum + item.qty, 0);
+            const picked = plan.items.reduce((sum, item) => sum + (item.pickedQty ?? 0), 0);
+            const done = plan.status !== "PICKING";
+            return (
+              <div className="grid gap-6 rounded-lg border p-5 sm:grid-cols-2 lg:grid-cols-4">
+                <Field label="Status">
+                  <span className="inline-flex items-center gap-1.5">
+                    {done ? <CircleCheck className="h-4 w-4 text-emerald-600" /> : <CircleDashed className="h-4 w-4 text-orange-500" />}
+                    {done ? "Selesai" : "Sedang berlangsung"}
+                  </span>
+                </Field>
+                <Field label="Karton di-pick">
+                  <span className={cn(done && picked < planned && "font-medium text-amber-700")}>
+                    {done || picked > 0 ? `${picked} dari ${planned}` : `Belum diisi (rencana ${planned})`}
+                  </span>
+                </Field>
+                <div className="sm:col-span-2">
+                  <Field label="Catatan picking">{plan.pickingNotes || "-"}</Field>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {(plan.status === "LOADING" || plan.status === "DISPATCHED") && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold">Loading</h2>
+          <div className="grid gap-6 rounded-lg border p-5 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1.5 sm:col-span-2">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Checklist</div>
+              {[
+                [plan.chkVehiclePapers, "KIR dan STNK"],
+                [plan.chkVehicleClean, "Bak bersih"],
+                [plan.chkVehicleCondition, "Kendaraan layak jalan"],
+                [plan.chkDriverReady, "Driver siap"],
+                [plan.chkCargoSecured, "Muatan diamankan"],
+              ].map(([ok, label]) => (
+                <div key={String(label)} className="flex items-center gap-2 text-sm">
+                  {ok ? <CircleCheck className="h-4 w-4 text-emerald-600" /> : <CircleDashed className="h-4 w-4 text-muted-foreground" />}
+                  <span className={ok ? undefined : "text-muted-foreground"}>{String(label)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-4">
+              <Field label="Nomor segel">{plan.sealNo || "-"}</Field>
+              <Field label="Suhu bak">{plan.loadingTempC !== null ? `${plan.loadingTempC} °C` : "-"}</Field>
+            </div>
+            <div className="space-y-4">
+              <Field label="Timbang (kosong / isi)">
+                {plan.tareWeightKg && plan.grossWeightKg ? `${plan.tareWeightKg} / ${plan.grossWeightKg} kg` : "-"}
+              </Field>
+              <Field label="Berat bersih">
+                <span className={cn(plan.readiness.netWeightKg !== null && payload !== null && plan.readiness.netWeightKg > payload && "font-semibold text-destructive")}>
+                  {plan.readiness.netWeightKg !== null ? `${plan.readiness.netWeightKg} kg` : "-"}
+                </span>
+              </Field>
+            </div>
+            {plan.loadingNotes ? (
+              <div className="sm:col-span-2 lg:col-span-4">
+                <Field label="Catatan loading">{plan.loadingNotes}</Field>
+              </div>
+            ) : null}
+          </div>
+
+          {plan.status === "LOADING" && plan.readiness.missing.length > 0 && (
+            <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <div className="font-medium">Belum bisa diberangkatkan:</div>
+              <ul className="list-inside list-disc">
+                {plan.readiness.missing.map((m) => (
+                  <li key={m}>{m}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {plan.readiness.warnings.length > 0 && (
+            <ul className="list-inside list-disc space-y-0.5 text-sm text-muted-foreground">
+              {plan.readiness.warnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       <div className="space-y-3">
         <h2 className="text-lg font-semibold">History</h2>
         <ol className="space-y-3 border-l pl-4">
@@ -351,6 +490,13 @@ export default function ShippingPlanDetailPage() {
         />
       )}
 
+      {plan.status === "PICKING" && (
+        <ShippingPickingDialog key={`${plan.status}-${plan.updatedDate}`} plan={plan} open={openPicking} onOpenChange={setOpenPicking} onSaved={(saved) => setPlan(saved)} />
+      )}
+      {plan.status === "LOADING" && (
+        <ShippingLoadingDialog key={`${plan.status}-${plan.updatedDate}`} plan={plan} open={openLoading} onOpenChange={setOpenLoading} onSaved={(saved) => setPlan(saved)} />
+      )}
+
       <Dialog open={openDispatch} onOpenChange={setOpenDispatch}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -364,7 +510,10 @@ export default function ShippingPlanDetailPage() {
               {plan.carrierName} · {plan.driverName} · {plan.plateNo}
             </div>
             <div className="text-muted-foreground">
-              {plan.originName} → {plan.destinationName} · {plan.totalUnits} unit · {plan.totalWeightKg} kg
+              {plan.originName} → {plan.destinationName} · {plan.items.reduce((sum, i) => sum + (i.loadedQty ?? 0), 0)} karton dimuat
+            </div>
+            <div className="text-muted-foreground">
+              Segel {plan.sealNo} · berat bersih {plan.readiness.netWeightKg} kg
             </div>
           </div>
           <DialogFooter>
