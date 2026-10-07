@@ -333,6 +333,12 @@ function Truck({ spec }: { spec: TruckSpec }) {
   );
 }
 
+/** Drawn size of a carton: a hair smaller than its packed slot so neighbouring cartons show a clear seam. */
+function drawnSize(b: PlacedBox) {
+  const inset = Math.min(0.006, Math.min(b.l, b.w, b.h) * 0.04);
+  return { l: b.l - inset * 2, w: b.w - inset * 2, h: b.h - inset * 2 };
+}
+
 /** All cargo boxes as one instanced mesh (plus tape strips and edge lines), colour per product. */
 function CargoBoxes({ boxes, bed, floor, highlightKey }: { boxes: PlacedBox[]; bed: TruckSpec; floor: number; highlightKey: string | null }) {
   const bin = cargoBinFor(bed);
@@ -344,14 +350,15 @@ function CargoBoxes({ boxes, bed, floor, highlightKey }: { boxes: PlacedBox[]; b
     const src = unit.getAttribute("position");
     const out = new Float32Array(boxes.length * src.count * 3);
     boxes.forEach((b, i) => {
+      const d = drawnSize(b);
       const cx = -bin.length / 2 + b.x + b.l / 2;
       const cy = floor + 0.003 + b.z + b.h / 2;
       const cz = -bin.width / 2 + b.y + b.w / 2;
       for (let v = 0; v < src.count; v += 1) {
         const o = (i * src.count + v) * 3;
-        out[o] = cx + src.getX(v) * b.l;
-        out[o + 1] = cy + src.getY(v) * b.h;
-        out[o + 2] = cz + src.getZ(v) * b.w;
+        out[o] = cx + src.getX(v) * d.l;
+        out[o + 1] = cy + src.getY(v) * d.h;
+        out[o + 2] = cz + src.getZ(v) * d.w;
       }
     });
     const geometry = new THREE.BufferGeometry();
@@ -372,18 +379,25 @@ function CargoBoxes({ boxes, bed, floor, highlightKey }: { boxes: PlacedBox[]; b
     const dim = new THREE.Color("#d3dbe6");
 
     boxes.forEach((b, i) => {
+      const d = drawnSize(b);
       const cx = -bin.length / 2 + b.x + b.l / 2;
       const cy = floor + 0.003 + b.z + b.h / 2;
       const cz = -bin.width / 2 + b.y + b.w / 2;
-      matrix.compose(new THREE.Vector3(cx, cy, cz), new THREE.Quaternion(), new THREE.Vector3(b.l, b.h, b.w));
+      matrix.compose(new THREE.Vector3(cx, cy, cz), new THREE.Quaternion(), new THREE.Vector3(d.l, d.h, d.w));
       m.setMatrixAt(i, matrix);
 
       color.set(b.color);
       if (highlightKey && b.productKey !== highlightKey) color.lerp(dim, 0.6); // others stay recognisable, just paler
       m.setColorAt(i, color);
 
-      // packing tape along the length, in the middle of the top face
-      matrix.compose(new THREE.Vector3(cx, cy + b.h / 2 + 0.0015, cz), new THREE.Quaternion(), new THREE.Vector3(b.l * 0.98, 0.003, Math.min(0.06, b.w * 0.18)));
+      // packing tape along the longer top edge of the carton, in the middle of the top face (turns with the carton)
+      const alongX = d.l >= d.w;
+      const tapeWidth = Math.min(0.05, Math.min(d.l, d.w) * 0.16);
+      matrix.compose(
+        new THREE.Vector3(cx, cy + d.h / 2 + 0.0015, cz),
+        new THREE.Quaternion(),
+        new THREE.Vector3(alongX ? d.l * 0.97 : tapeWidth, 0.003, alongX ? tapeWidth : d.w * 0.97),
+      );
       t.setMatrixAt(i, matrix);
     });
 
@@ -407,7 +421,7 @@ function CargoBoxes({ boxes, bed, floor, highlightKey }: { boxes: PlacedBox[]; b
         <meshStandardMaterial color="#d9c9a3" roughness={0.6} />
       </instancedMesh>
       <lineSegments geometry={edges} frustumCulled={false}>
-        <lineBasicMaterial color="#1e293b" transparent opacity={0.5} />
+        <lineBasicMaterial color="#0f172a" transparent opacity={0.9} />
       </lineSegments>
     </group>
   );
