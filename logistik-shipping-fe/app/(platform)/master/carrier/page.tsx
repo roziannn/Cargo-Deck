@@ -12,38 +12,14 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getStoredAuthToken } from "@/lib/api/auth";
-import { createMstLocation, listMstLocations, updateMstLocation, type LocationType, type MstLocationItem } from "@/lib/api/mst-location";
+import { createMstCarrier, listMstCarriers, updateMstCarrier, type CarrierType, type MstCarrierItem } from "@/lib/api/mst-logistics";
 
-type FormState = {
-  code: string;
-  name: string;
-  type: LocationType;
-  address: string;
-  city: string;
-  province: string;
-  contactName: string;
-  contactPhone: string;
-  latitude: string;
-  longitude: string;
-  isActive: boolean;
-};
+type FormState = { code: string; name: string; type: CarrierType; contactName: string; contactPhone: string; isActive: boolean };
 
-const EMPTY_FORM: FormState = {
-  code: "",
-  name: "",
-  type: "CUSTOMER",
-  address: "",
-  city: "",
-  province: "",
-  contactName: "",
-  contactPhone: "",
-  latitude: "",
-  longitude: "",
-  isActive: true,
-};
+const EMPTY_FORM: FormState = { code: "", name: "", type: "3PL", contactName: "", contactPhone: "", isActive: true };
 
-export default function LocationPage() {
-  const [data, setData] = useState<MstLocationItem[]>([]);
+export default function CarrierPage() {
+  const [data, setData] = useState<MstCarrierItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [search, setSearch] = useState("");
@@ -57,9 +33,9 @@ export default function LocationPage() {
   const load = useCallback(async () => {
     setIsLoading(true);
     try {
-      setData(await listMstLocations(getStoredAuthToken() ?? undefined));
+      setData(await listMstCarriers(getStoredAuthToken() ?? undefined));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Gagal mengambil data location.");
+      toast.error(error instanceof Error ? error.message : "Gagal mengambil data carrier.");
       setData([]);
     } finally {
       setIsLoading(false);
@@ -73,13 +49,12 @@ export default function LocationPage() {
 
   const filtered = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    return data.filter((row) => [row.code, row.name, row.type, row.city ?? "", row.province ?? ""].some((v) => v.toLowerCase().includes(keyword)));
+    return data.filter((row) => [row.code, row.name, row.type, row.contactName ?? ""].some((v) => v.toLowerCase().includes(keyword)));
   }, [data, search]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
   const startIndex = (page - 1) * rowsPerPage;
   const paginated = filtered.slice(startIndex, startIndex + rowsPerPage);
-
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((current) => ({ ...current, [key]: value }));
 
   function openCreate() {
@@ -88,21 +63,9 @@ export default function LocationPage() {
     setOpenForm(true);
   }
 
-  function openEdit(row: MstLocationItem) {
+  function openEdit(row: MstCarrierItem) {
     setEditingNewId(row.newId);
-    setForm({
-      code: row.code,
-      name: row.name,
-      type: row.type,
-      address: row.address ?? "",
-      city: row.city ?? "",
-      province: row.province ?? "",
-      contactName: row.contactName ?? "",
-      contactPhone: row.contactPhone ?? "",
-      latitude: row.latitude === null ? "" : String(row.latitude),
-      longitude: row.longitude === null ? "" : String(row.longitude),
-      isActive: row.isActive,
-    });
+    setForm({ code: row.code, name: row.name, type: row.type, contactName: row.contactName ?? "", contactPhone: row.contactPhone ?? "", isActive: row.isActive });
     setOpenForm(true);
   }
 
@@ -111,27 +74,17 @@ export default function LocationPage() {
       toast.error("Code dan Name wajib diisi.");
       return;
     }
-
     setIsSaving(true);
     try {
       const token = getStoredAuthToken() ?? undefined;
-      const toCoordinate = (value: string) => (value.trim() === "" ? null : Number(value.replace(",", ".")));
-      const latitude = toCoordinate(form.latitude);
-      const longitude = toCoordinate(form.longitude);
-      if ((latitude !== null && !Number.isFinite(latitude)) || (longitude !== null && !Number.isFinite(longitude))) {
-        toast.error("Latitude dan Longitude harus berupa angka.");
-        setIsSaving(false);
-        return;
-      }
-      const payload = { ...form, code: form.code.trim(), name: form.name.trim(), latitude, longitude };
-      if (editingNewId) await updateMstLocation(editingNewId, payload, token);
-      else await createMstLocation(payload, token);
-
-      toast.success(`Location "${payload.name}" berhasil disimpan.`);
+      const payload = { ...form, code: form.code.trim(), name: form.name.trim() };
+      if (editingNewId) await updateMstCarrier(editingNewId, payload, token);
+      else await createMstCarrier(payload, token);
+      toast.success(`Carrier "${payload.name}" berhasil disimpan.`);
       setOpenForm(false);
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Gagal menyimpan location.");
+      toast.error(error instanceof Error ? error.message : "Gagal menyimpan carrier.");
     } finally {
       setIsSaving(false);
     }
@@ -142,8 +95,8 @@ export default function LocationPage() {
       <Toaster position="top-center" />
 
       <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Master Location</h1>
-        <p className="text-sm text-muted-foreground">Warehouses (origin) and customer / DC locations (destination) used by shipping plans.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Master Carrier</h1>
+        <p className="text-sm text-muted-foreground">Armada sendiri (OWN) dan penyedia angkutan pihak ketiga (3PL) untuk booking pengiriman.</p>
       </div>
 
       <div className="flex items-center justify-between">
@@ -155,12 +108,12 @@ export default function LocationPage() {
               setSearch(e.target.value);
               setPage(1);
             }}
-            placeholder="Search code, name, type, city..."
+            placeholder="Search code, name, type, contact..."
             className="w-full rounded-md px-9 py-2 text-sm"
           />
         </div>
         <Button onClick={openCreate} className="font-medium">
-          + Add Location
+          + Add Carrier
         </Button>
       </div>
 
@@ -171,8 +124,6 @@ export default function LocationPage() {
               <TableHead>Code</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Type</TableHead>
-              <TableHead>City</TableHead>
-              <TableHead>Province</TableHead>
               <TableHead>Contact</TableHead>
               <TableHead>Is Active</TableHead>
               <TableHead className="w-24 text-center">Actions</TableHead>
@@ -184,10 +135,8 @@ export default function LocationPage() {
                 <TableCell className="font-medium">{row.code}</TableCell>
                 <TableCell>{row.name}</TableCell>
                 <TableCell>
-                  <Badge variant="outline">{row.type === "WAREHOUSE" ? "Warehouse" : "Customer"}</Badge>
+                  <Badge variant="outline">{row.type === "OWN" ? "Armada sendiri" : "3PL"}</Badge>
                 </TableCell>
-                <TableCell>{row.city || "-"}</TableCell>
-                <TableCell>{row.province || "-"}</TableCell>
                 <TableCell>{[row.contactName, row.contactPhone].filter(Boolean).join(" · ") || "-"}</TableCell>
                 <TableCell>
                   {row.isActive ? (
@@ -205,7 +154,7 @@ export default function LocationPage() {
             ))}
             {(isLoading || paginated.length === 0) && (
               <TableRow>
-                <TableCell colSpan={8} className="py-6 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="py-6 text-center text-muted-foreground">
                   {isLoading ? "Loading data..." : "No data found"}
                 </TableCell>
               </TableRow>
@@ -234,44 +183,29 @@ export default function LocationPage() {
       <Dialog open={openForm} onOpenChange={setOpenForm}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingNewId ? "Edit Location" : "Add Location"}</DialogTitle>
+            <DialogTitle>{editingNewId ? "Edit Carrier" : "Add Carrier"}</DialogTitle>
           </DialogHeader>
-
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <Label>Code</Label>
-                <Input value={form.code} onChange={(e) => setField("code", e.target.value)} placeholder="e.g. DC-SBY" />
+                <Input value={form.code} onChange={(e) => setField("code", e.target.value)} placeholder="e.g. CR-034" />
               </div>
               <div className="space-y-1">
                 <Label>Type</Label>
                 <select
                   value={form.type}
-                  onChange={(e) => setField("type", e.target.value as LocationType)}
+                  onChange={(e) => setField("type", e.target.value as CarrierType)}
                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
-                  <option value="WAREHOUSE">Warehouse</option>
-                  <option value="CUSTOMER">Customer / DC</option>
+                  <option value="OWN">Armada sendiri (OWN)</option>
+                  <option value="3PL">Pihak ketiga (3PL)</option>
                 </select>
               </div>
             </div>
             <div className="space-y-1">
               <Label>Name</Label>
-              <Input value={form.name} onChange={(e) => setField("name", e.target.value)} placeholder="Input name" />
-            </div>
-            <div className="space-y-1">
-              <Label>Address</Label>
-              <Input value={form.address} onChange={(e) => setField("address", e.target.value)} placeholder="Street address" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label>City</Label>
-                <Input value={form.city} onChange={(e) => setField("city", e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label>Province</Label>
-                <Input value={form.province} onChange={(e) => setField("province", e.target.value)} />
-              </div>
+              <Input value={form.name} onChange={(e) => setField("name", e.target.value)} placeholder="Carrier name" />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
@@ -283,28 +217,16 @@ export default function LocationPage() {
                 <Input value={form.contactPhone} onChange={(e) => setField("contactPhone", e.target.value)} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label>Latitude</Label>
-                <Input value={form.latitude} onChange={(e) => setField("latitude", e.target.value)} placeholder="e.g. -6.2250" />
-              </div>
-              <div className="space-y-1">
-                <Label>Longitude</Label>
-                <Input value={form.longitude} onChange={(e) => setField("longitude", e.target.value)} placeholder="e.g. 106.9004" />
-              </div>
-            </div>
-            <p className="-mt-2 text-xs text-muted-foreground">Koordinat dipakai untuk menghitung estimasi jarak dan biaya kirim. Boleh dikosongkan, jarak lalu diisi manual saat booking.</p>
             {editingNewId && (
               <div className="flex items-center justify-between rounded-md border p-3">
                 <div className="space-y-0.5">
                   <Label>Is Active</Label>
-                  <p className="text-xs text-muted-foreground">Inactive locations can no longer be chosen in a shipping plan.</p>
+                  <p className="text-xs text-muted-foreground">Carrier nonaktif tidak bisa dipilih saat booking.</p>
                 </div>
                 <Switch checked={form.isActive} onCheckedChange={(checked) => setField("isActive", checked)} disabled={isSaving} />
               </div>
             )}
           </div>
-
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenForm(false)} disabled={isSaving}>
               Cancel

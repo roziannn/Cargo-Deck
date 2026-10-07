@@ -13,6 +13,8 @@ export type MstLocationItem = {
   province: string | null;
   contactName: string | null;
   contactPhone: string | null;
+  latitude: number | null;
+  longitude: number | null;
   isActive: boolean;
   createdBy: string | null;
   createdDate: string;
@@ -27,6 +29,8 @@ export type MstLocationPayload = {
   province?: string;
   contactName?: string;
   contactPhone?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   isActive: boolean;
 };
 

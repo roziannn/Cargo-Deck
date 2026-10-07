@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, ChevronLeft, Check } from "lucide-react";
+import { AlertTriangle, Check, ChevronLeft, FileText, Truck } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
 
+import { ShippingBookingDialog } from "@/components/shipping-booking-dialog";
 import { PlanStatusBadge, PriorityBadge } from "@/components/shipping-plan-status";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,9 +14,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getStoredAuthToken } from "@/lib/api/auth";
 import {
   changeShippingPlanStatus,
+  dispatchShippingPlan,
   formatPlanDate,
   formatPlanDateTime,
+  formatRupiah,
   getShippingPlan,
+  getShippingPlanEstimate,
+  type FreightEstimate,
   type ShippingPlanDetail,
   type ShippingPlanStatus,
 } from "@/lib/api/shipping-plan";
@@ -25,6 +30,8 @@ const STEPS: { status: ShippingPlanStatus; label: string }[] = [
   { status: "DRAFT", label: "Draft" },
   { status: "PLANNED", label: "Load planned" },
   { status: "APPROVED", label: "Approved" },
+  { status: "BOOKED", label: "Booked" },
+  { status: "DISPATCHED", label: "Dispatched" },
 ];
 
 const HANDLING_LABEL: Record<string, string> = { COLD_CHAIN: "Cold chain", FRAGILE: "Fragile", HAZARDOUS: "Hazardous" };
@@ -40,11 +47,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export default function ShippingPlanDetailPage() {
   const { newId } = useParams<{ newId: string }>();
+  const router = useRouter();
   const [plan, setPlan] = useState<ShippingPlanDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [openCancel, setOpenCancel] = useState(false);
   const [reason, setReason] = useState("");
+  const [openBooking, setOpenBooking] = useState(false);
+  const [openDispatch, setOpenDispatch] = useState(false);
+  const [estimate, setEstimate] = useState<FreightEstimate | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -59,6 +70,35 @@ export default function ShippingPlanDetailPage() {
     const id = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(id);
   }, [load]);
+
+  // before booking, show the cost the plan would have (this is what an approver wants to see)
+  const needsEstimate = plan !== null && (plan.status === "PLANNED" || plan.status === "APPROVED") && plan.vehicleNewId !== null;
+  useEffect(() => {
+    if (!needsEstimate) return;
+    let alive = true;
+    getShippingPlanEstimate(newId, {}, getStoredAuthToken() ?? undefined)
+      .then((result) => alive && setEstimate(result))
+      .catch(() => alive && setEstimate(null));
+    return () => {
+      alive = false;
+    };
+  }, [needsEstimate, newId, plan?.vehicleNewId, plan?.updatedDate]);
+
+  async function runDispatch() {
+    setIsBusy(true);
+    try {
+      const dispatched = await dispatchShippingPlan(newId, getStoredAuthToken() ?? undefined);
+      setPlan(dispatched);
+      setOpenDispatch(false);
+      toast.success(`Surat jalan ${dispatched.deliveryNoteNo} diterbitkan.`);
+      router.push(`/surat-jalan/${newId}`); // same tab: the login token may live in this tab's sessionStorage
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menerbitkan surat jalan.");
+      await load();
+    } finally {
+      setIsBusy(false);
+    }
+  }
 
   async function runAction(action: "approve" | "cancel", note?: string) {
     setIsBusy(true);
@@ -119,7 +159,34 @@ export default function ShippingPlanDetailPage() {
               <Check className="mr-2 h-4 w-4" /> Approve
             </Button>
           )}
-          {plan.status !== "CANCELLED" && (
+          {plan.status === "APPROVED" && (
+            <Button onClick={() => setOpenBooking(true)} disabled={isBusy}>
+              <Truck className="mr-2 h-4 w-4" /> Booking Armada
+            </Button>
+          )}
+          {plan.status === "BOOKED" && (
+            <>
+              <Button variant="outline" onClick={() => setOpenBooking(true)} disabled={isBusy}>
+                Ubah Booking
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href={`/surat-jalan/${plan.newId}`}>
+                  <FileText className="mr-2 h-4 w-4" /> Preview Surat Jalan
+                </Link>
+              </Button>
+              <Button onClick={() => setOpenDispatch(true)} disabled={isBusy}>
+                Terbitkan Surat Jalan & Berangkatkan
+              </Button>
+            </>
+          )}
+          {plan.status === "DISPATCHED" && (
+            <Button asChild>
+              <Link href={`/surat-jalan/${plan.newId}`}>
+                <FileText className="mr-2 h-4 w-4" /> Cetak Surat Jalan {plan.deliveryNoteNo}
+              </Link>
+            </Button>
+          )}
+          {plan.status !== "CANCELLED" && plan.status !== "DISPATCHED" && (
             <Button variant="outline" className="text-destructive" onClick={() => setOpenCancel(true)} disabled={isBusy}>
               Cancel Plan
             </Button>
@@ -212,6 +279,51 @@ export default function ShippingPlanDetailPage() {
         )}
       </div>
 
+      {plan.status === "CANCELLED" ? null : plan.totalCost !== null ? (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold">Booking &amp; Biaya</h2>
+          <div className="grid gap-6 rounded-lg border p-5 sm:grid-cols-2 lg:grid-cols-4">
+            <Field label="Carrier">{plan.carrierName || "-"}</Field>
+            <Field label="Driver">{plan.driverName || "-"}</Field>
+            <Field label="Nomor polisi">{plan.plateNo || "-"}</Field>
+            <Field label="Surat jalan">{plan.deliveryNoteNo ? `${plan.deliveryNoteNo} · ${formatPlanDateTime(plan.dispatchedAt)}` : "Belum diterbitkan"}</Field>
+            <Field label="Jarak">{plan.distanceKm} km</Field>
+            <Field label="Ongkos angkut">
+              {formatRupiah(plan.freightCost)}
+              <div className="text-xs text-muted-foreground">
+                {formatRupiah(plan.baseFee)} + {formatRupiah(plan.perKmFee)}/km
+              </div>
+            </Field>
+            <Field label="Biaya muat + lain">{formatRupiah(Number(plan.loadingFee ?? 0) + Number(plan.otherFee ?? 0))}</Field>
+            <Field label="Total biaya">
+              <span className="text-base font-semibold">{formatRupiah(plan.totalCost)}</span>
+            </Field>
+            {plan.bookingNotes ? (
+              <div className="sm:col-span-2 lg:col-span-4">
+                <Field label="Catatan booking">{plan.bookingNotes}</Field>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : estimate && plan.items.length > 0 ? (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold">Estimasi Biaya</h2>
+          {estimate.missing ? (
+            <p className="text-sm text-amber-700">{estimate.missing}</p>
+          ) : (
+            <div className="grid gap-6 rounded-lg border p-5 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label="Perkiraan jarak">{estimate.distanceKm} km</Field>
+              <Field label="Biaya dasar">{formatRupiah(estimate.baseFee)}</Field>
+              <Field label="Tarif per km">{formatRupiah(estimate.perKmFee)}</Field>
+              <Field label="Estimasi ongkos angkut">
+                <span className="text-base font-semibold">{formatRupiah(estimate.freightCost)}</span>
+              </Field>
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">Belum termasuk biaya muat dan biaya lain. Angka final ditetapkan saat booking armada.</p>
+        </div>
+      ) : null}
+
       <div className="space-y-3">
         <h2 className="text-lg font-semibold">History</h2>
         <ol className="space-y-3 border-l pl-4">
@@ -228,6 +340,43 @@ export default function ShippingPlanDetailPage() {
           ))}
         </ol>
       </div>
+
+      {(plan.status === "APPROVED" || plan.status === "BOOKED") && (
+        <ShippingBookingDialog
+          key={`${plan.status}-${plan.updatedDate}`}
+          plan={plan}
+          open={openBooking}
+          onOpenChange={setOpenBooking}
+          onSaved={(saved) => setPlan(saved)}
+        />
+      )}
+
+      <Dialog open={openDispatch} onOpenChange={setOpenDispatch}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Terbitkan surat jalan?</DialogTitle>
+            <DialogDescription>
+              Nomor surat jalan akan diterbitkan dan truk dianggap berangkat. Setelah ini booking tidak bisa diubah dan plan tidak bisa dibatalkan.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1 rounded-md border bg-muted/30 p-3 text-sm">
+            <div>
+              {plan.carrierName} · {plan.driverName} · {plan.plateNo}
+            </div>
+            <div className="text-muted-foreground">
+              {plan.originName} → {plan.destinationName} · {plan.totalUnits} unit · {plan.totalWeightKg} kg
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpenDispatch(false)} disabled={isBusy}>
+              Kembali
+            </Button>
+            <Button onClick={() => void runDispatch()} disabled={isBusy}>
+              Terbitkan & Berangkatkan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={openCancel} onOpenChange={setOpenCancel}>
         <DialogContent className="sm:max-w-md">

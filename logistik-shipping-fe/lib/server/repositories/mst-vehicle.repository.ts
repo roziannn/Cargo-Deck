@@ -12,6 +12,8 @@ export type MstVehicleRow = {
   floorArea: string | null;
   maxHeight: string | null;
   maxPayload: string | null;
+  baseFee: string | null;
+  ratePerKm: string | null;
   isActive: boolean;
   createdBy: string | null;
   createdDate: Date;
@@ -29,6 +31,8 @@ export type MstVehicleInput = {
   floorArea: number | null;
   maxHeight: number | null;
   maxPayload: number | null;
+  baseFee: number | null;
+  ratePerKm: number | null;
   isActive: boolean;
 };
 
@@ -36,6 +40,7 @@ export type MstVehicleInput = {
 const COLUMNS = `id, new_id, name, type, climate,
   trim_scale(cbm)::text AS cbm, trim_scale(dimensions_l)::text AS dimensions_l, trim_scale(dimensions_w)::text AS dimensions_w,
   trim_scale(floor_area)::text AS floor_area, trim_scale(max_height)::text AS max_height, trim_scale(max_payload)::text AS max_payload,
+  base_fee::text AS base_fee, rate_per_km::text AS rate_per_km,
   is_active, created_by, created_date, updated_by, updated_date`;
 
 export const mstVehicleRepository = {
@@ -51,8 +56,8 @@ export const mstVehicleRepository = {
 
   async create(input: MstVehicleInput & { createdBy: string }) {
     const rows = await query<MstVehicleRow>(
-      `INSERT INTO mst_vehicle (name, type, climate, cbm, dimensions_l, dimensions_w, floor_area, max_height, max_payload, is_active, created_by)
-       VALUES (@name, @type, @climate, @cbm, @dimensionsL, @dimensionsW, @floorArea, @maxHeight, @maxPayload, @isActive, @createdBy)
+      `INSERT INTO mst_vehicle (name, type, climate, cbm, dimensions_l, dimensions_w, floor_area, max_height, max_payload, base_fee, rate_per_km, is_active, created_by)
+       VALUES (@name, @type, @climate, @cbm, @dimensionsL, @dimensionsW, @floorArea, @maxHeight, @maxPayload, @baseFee, @ratePerKm, @isActive, @createdBy)
        RETURNING ${COLUMNS}`,
       input,
     );
@@ -63,7 +68,7 @@ export const mstVehicleRepository = {
     const rows = await query<MstVehicleRow>(
       `UPDATE mst_vehicle
        SET name = @name, type = @type, climate = @climate, cbm = @cbm, dimensions_l = @dimensionsL,
-           dimensions_w = @dimensionsW, floor_area = @floorArea, max_height = @maxHeight, max_payload = @maxPayload, is_active = @isActive,
+           dimensions_w = @dimensionsW, floor_area = @floorArea, max_height = @maxHeight, max_payload = @maxPayload, base_fee = @baseFee, rate_per_km = @ratePerKm, is_active = @isActive,
            updated_by = @updatedBy, updated_date = now()
        WHERE new_id = @newId
        RETURNING ${COLUMNS}`,

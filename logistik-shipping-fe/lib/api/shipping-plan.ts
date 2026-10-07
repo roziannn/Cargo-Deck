@@ -1,6 +1,6 @@
 import { apiFetch, apiPath } from "@/lib/api-client";
 
-export type ShippingPlanStatus = "DRAFT" | "PLANNED" | "APPROVED" | "CANCELLED";
+export type ShippingPlanStatus = "DRAFT" | "PLANNED" | "APPROVED" | "BOOKED" | "DISPATCHED" | "CANCELLED";
 export type ShippingPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
 export type SpecialHandling = "COLD_CHAIN" | "FRAGILE" | "HAZARDOUS";
 
@@ -28,6 +28,22 @@ export type ShippingPlan = {
   createdDate: string;
   updatedBy: string | null;
   updatedDate: string | null;
+  // booking and cost (null until booked); amounts are whole rupiah as strings
+  carrierNewId: string | null;
+  carrierName: string | null;
+  driverNewId: string | null;
+  driverName: string | null;
+  plateNo: string | null;
+  distanceKm: string | null;
+  baseFee: string | null;
+  perKmFee: string | null;
+  freightCost: string | null;
+  loadingFee: string | null;
+  otherFee: string | null;
+  totalCost: string | null;
+  bookingNotes: string | null;
+  deliveryNoteNo: string | null;
+  dispatchedAt: string | null;
 };
 
 export type ShippingPlanItem = {
@@ -97,4 +113,84 @@ export function formatPlanDateTime(value: string | null | undefined) {
   return Number.isNaN(date.getTime())
     ? value
     : date.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+export type FreightEstimate = {
+  distanceKm: number | null;
+  distanceSource: "coordinates" | "manual" | null;
+  baseFee: number | null;
+  perKmFee: number | null;
+  freightCost: number | null;
+  loadingFee: number;
+  otherFee: number;
+  totalCost: number | null;
+  /** Why no estimate could be made (null when complete). */
+  missing: string | null;
+};
+
+export type BookingPayload = {
+  carrierNewId: string;
+  driverNewId: string;
+  plateNo: string;
+  /** Leave out to use the distance estimated from the locations' coordinates. */
+  distanceKm?: number;
+  loadingFee: number;
+  otherFee: number;
+  bookingNotes?: string;
+};
+
+export type DeliveryNote = {
+  planNo: string;
+  status: ShippingPlanStatus;
+  /** True while the plan is only booked: the note has no number yet. */
+  preview: boolean;
+  plan: ShippingPlan;
+  items: ShippingPlanItem[];
+  note: {
+    deliveryNoteNo: string | null;
+    dispatchedAt: string | null;
+    originName: string;
+    originAddress: string | null;
+    originCity: string | null;
+    originContact: string | null;
+    originPhone: string | null;
+    destinationName: string;
+    destinationAddress: string | null;
+    destinationCity: string | null;
+    destinationContact: string | null;
+    destinationPhone: string | null;
+    vehicleType: string | null;
+    vehicleName: string | null;
+    carrierName: string | null;
+    carrierType: string | null;
+    driverName: string | null;
+    driverPhone: string | null;
+    driverLicenseNo: string | null;
+  };
+};
+
+export function getShippingPlanEstimate(newId: string, params: { distanceKm?: number; loadingFee?: number; otherFee?: number }, token?: string) {
+  const query = new URLSearchParams();
+  if (params.distanceKm) query.set("distanceKm", String(params.distanceKm));
+  if (params.loadingFee) query.set("loadingFee", String(params.loadingFee));
+  if (params.otherFee) query.set("otherFee", String(params.otherFee));
+  const suffix = query.toString() ? `?${query}` : "";
+  return apiFetch<FreightEstimate>(apiPath(`ShippingPlan/${encodeURIComponent(newId)}/estimate${suffix}`), { method: "GET", token, cache: "no-store" });
+}
+
+export const saveShippingPlanBooking = (newId: string, payload: BookingPayload, token?: string) =>
+  apiFetch<ShippingPlanDetail>(path(newId, "/booking"), { method: "PUT", body: JSON.stringify(payload), token });
+
+export const dispatchShippingPlan = (newId: string, token?: string) =>
+  apiFetch<ShippingPlanDetail>(path(newId, "/dispatch"), { method: "POST", token });
+
+export const getDeliveryNote = (newId: string, token?: string) =>
+  apiFetch<DeliveryNote>(path(newId, "/delivery-note"), { method: "GET", token, cache: "no-store" });
+
+const rupiahFormat = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
+
+export function formatRupiah(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") return "-";
+  const n = Number(value);
+  return Number.isFinite(n) ? rupiahFormat.format(n) : "-";
 }
