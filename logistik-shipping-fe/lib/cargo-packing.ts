@@ -165,9 +165,19 @@ function measure(placed: PlacedBox[], unplaced: PackBox[], bin: PackBin): PackRe
   };
 }
 
+const validSize = (n: number) => Number.isFinite(n) && n > 0;
+
 /** Packs the boxes; several ordering strategies are tried and the one that loads the most (then shortest) wins. */
-export function packCargo(boxes: PackBox[], bin: PackBin): PackResult {
-  if (boxes.length === 0) return measure([], [], bin);
+export function packCargo(input: PackBox[], rawBin: PackBin): PackResult {
+  // Boxes without a usable size can never be placed; keep them out of the maths so no NaN reaches the 3D scene.
+  const bin: PackBin = {
+    length: validSize(rawBin.length) ? rawBin.length : 0.1,
+    width: validSize(rawBin.width) ? rawBin.width : 0.1,
+    height: validSize(rawBin.height) ? rawBin.height : 0.1,
+  };
+  const boxes = input.filter((b) => validSize(b.l) && validSize(b.w) && validSize(b.h));
+  const invalid = input.filter((b) => !(validSize(b.l) && validSize(b.w) && validSize(b.h)));
+  if (boxes.length === 0) return measure([], invalid, bin);
 
   let best: PackResult | null = null;
   for (const strategy of STRATEGIES) {
@@ -183,7 +193,8 @@ export function packCargo(boxes: PackBox[], bin: PackBin): PackResult {
     if (result.unplaced.length === 0 && boxes.length > 400) break; // big loads: first complete layout is good enough
   }
 
-  return best as PackResult;
+  const result = best as PackResult;
+  return invalid.length > 0 ? { ...result, unplaced: [...result.unplaced, ...invalid] } : result;
 }
 
 /** Usable cargo space inside a truck body: the outer bed size minus wall thickness and a hair of clearance. */
