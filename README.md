@@ -45,7 +45,7 @@ logistik-shipping-fe/
       master/             vehicle, cubstool, location
       shipping/plan/      daftar, buat, ubah, detail plan
       shipping/container-load/create   simulasi muatan 3D
-      settings/           role, menu, account
+      settings/           role, menu, account, user
     api/v1/               route handler (API)
   components/             komponen UI dan komponen bersama
   lib/api/                client untuk memanggil API dari browser
@@ -65,6 +65,8 @@ psql -d nama_database -f database/001_create_core_access_tables.sql
 psql -d nama_database -f database/002_auth_and_seed.sql
 psql -d nama_database -f database/003_master_vehicle_cubstool.sql
 psql -d nama_database -f database/004_shipping_plan.sql
+psql -d nama_database -f database/005_user_management.sql
+psql -d nama_database -f database/006_seed_master_data.sql   # data contoh, opsional
 ```
 
 Lalu buat `logistik-shipping-fe/.env.local`:
@@ -90,6 +92,8 @@ pnpm install
 pnpm dev
 ```
 
+Skrip 006 hanya berisi data contoh (nama, alamat, dan nomor telepon karangan) untuk development, jadi tidak perlu dijalankan di lingkungan produksi. Dimensi kendaraan dalam meter, dimensi barang dalam sentimeter, berat dalam kilogram.
+
 Buka http://localhost:3000. Akun bawaan dari skrip seed adalah `admin` dengan password `Admin123!`. Ganti password itu secepatnya:
 
 ```sql
@@ -110,6 +114,8 @@ Nama tabel dan kolom memakai snake_case. API mengubahnya jadi camelCase di `lib/
 | 002 | `core_user`, role Administrator, user admin, menu dasar |
 | 003 | `mst_vehicle`, `mst_cubstool` |
 | 004 | `mst_location`, `shipping_plan`, `shipping_plan_item`, `shipping_plan_history`, kolom `max_payload` di kendaraan, menu Shipping Plan dan Location |
+| 005 | unique index username dan email (tanpa membedakan huruf besar-kecil), menu Settings > User |
+| 006 | data contoh: 33 kendaraan, 32 barang (cubstool), 39 lokasi (8 gudang, 31 customer) |
 
 Tabel master, role, menu, dan plan punya `id` (identity) dan `new_id` (uuid). Relasi antar tabel dan URL di API memakai `new_id`, bukan `id`.
 
@@ -119,7 +125,9 @@ Item di `shipping_plan_item` menyimpan salinan kode, nama, dan berat barang saat
 
 Login ada di `POST /api/v1/Auth/login-sso`. Passwordnya dicek di dalam Postgres dengan `pgcrypto` (bcrypt), lalu server mengeluarkan token JWT HS256 yang berlaku 8 jam. Token disimpan di browser dan dikirim sebagai `Authorization: Bearer ...` di setiap request. Semua endpoint kecuali login menolak request tanpa token yang valid (401).
 
-User yang bisa login ada di tabel `core_user`. Untuk sekarang belum ada halaman untuk menambah user login baru, jadi user baru dimasukkan lewat SQL, mengikuti contoh di `002_auth_and_seed.sql`. Email user dipakai sebagai `user_principal_name` di `core_role_claim`, jadi saat user ditambahkan ke sebuah role dari halaman Role, yang dicari adalah isi `core_user`.
+User yang bisa login ada di tabel `core_user` dan dikelola dari Settings > User: tambah user, ubah data, ganti password, dan menonaktifkan akun. Password minimal 8 karakter dan tidak pernah dikirim balik oleh API. Username dan email unik tanpa membedakan huruf besar-kecil, dan akun sendiri tidak bisa dinonaktifkan supaya tidak terkunci.
+
+Email user dipakai sebagai `user_principal_name` di `core_role_claim`, jadi saat user ditambahkan ke sebuah role dari halaman Role, yang dicari adalah isi `core_user`. Kalau email seorang user diubah, keanggotaan rolenya ikut dipindahkan.
 
 Menu di sidebar tidak tertulis di kode. Menu diambil dari tabel `core_menu`, difilter berdasarkan role milik user (lewat `core_role_claim` dan `core_role_menu`). Role, menu, dan akses per role diatur dari halaman Settings. Menu baru otomatis tidak terlihat oleh siapa pun sampai diberi akses ke sebuah role.
 
@@ -131,6 +139,7 @@ Semua di bawah `/api/v1`. Format JSON, nama field camelCase.
 |---|---|
 | `Auth/login-sso` | login |
 | `CoreRole`, `CoreRoleClaim/*` | role dan user per role |
+| `CoreUser` | daftar, tambah, dan ubah user login (`PUT CoreUser/{id}`, password opsional) |
 | `DataHris/get-name/lov` | pencarian user untuk ditambahkan ke role (`?search=&limit=`), mencari di `core_user` |
 | `CoreMenu/*` | menu, tombol (function), akses role ke menu, menu untuk sidebar |
 | `MstVehicle`, `MstCubstool`, `MstLocation` | master data, masing-masing dengan `lov-*` untuk daftar pilihan |
@@ -155,8 +164,6 @@ Ada dua catatan soal hitungannya:
 ## Yang belum selesai
 
 Beberapa halaman masih memanggil API dari backend lama (.NET) yang sudah tidak dipakai, jadi belum berfungsi: Audit Trail, Transaction/Approval, serta data yang dibutuhkan modul validasi (produk, product step, requirement category, validation form) dan notifikasi di lonceng atas. Endpoint-nya perlu dibuat ulang di `app/api/v1` dengan pola yang sama seperti modul yang sudah jadi. Dashboard dan Verification/Ongoing Process saat ini masih halaman statis atau placeholder.
-
-Yang juga masih kurang: halaman untuk membuat dan mengelola user login (lihat bagian login di atas).
 
 Untuk alur pengirimannya sendiri, rencana tahap berikutnya:
 
