@@ -160,6 +160,7 @@ Semua di bawah `/api/v1`. Format JSON, nama field camelCase.
 | `ShippingPlan/{id}/status` | `{ "action": "approve" }` atau `{ "action": "cancel", "note": "..." }` |
 | `ShippingPlan/{id}/estimate` | estimasi biaya kirim; opsional `?distanceKm=&loadingFee=&otherFee=` |
 | `ShippingPlan/{id}/booking` | `PUT` carrier, driver, nomor polisi, biaya tambahan (plan harus `APPROVED` atau `BOOKED`) |
+| `Dashboard?range=` | `GET` angka dashboard untuk 7, 30, 90, atau 365 hari terakhir |
 | `ShippingPlan/{id}/start-picking` | `POST`, `BOOKED` -> `PICKING` |
 | `ShippingPlan/{id}/picking` | `PUT` jumlah di-pick per barang, catatan, `complete` untuk lanjut ke `LOADING` |
 | `ShippingPlan/{id}/loading` | `PUT` jumlah dimuat, checklist, suhu, nomor segel, bruto/tara, catatan (plan harus `LOADING`) |
@@ -222,6 +223,12 @@ Aplikasi ini tidak melacak posisi truk. Sebagai gantinya, saat dispatch diisi **
 - ETA + masa tunggu lewat dan tidak ada insiden yang masih terbuka, maka plan jadi `COMPLETED` sendiri. Pengecekannya dilakukan setiap plan dibaca, jadi tidak ada scheduler.
 
 Kalau ada masalah, staf menekan **Lapor Insiden** di plan itu. Jenisnya: terlambat, kecelakaan, barang rusak, barang kurang, suhu keluar batas, retur, lainnya. Setiap insiden punya **estimasi selesai ditangani** yang bisa diatur dan diubah, **solusi**, dan klaim opsional (nilai dan pihak yang ditagih, biasanya carrier). Statusnya Baru, Diproses, Klaim diajukan, Selesai, atau Ditolak. Selama ada insiden yang belum ditutup plan tidak ikut selesai otomatis. Menyelesaikan insiden wajib mengisi solusi, dan mengajukan klaim wajib mengisi nilai dan pihak yang ditagih. Insiden masih bisa dilaporkan sampai 7 hari setelah plan selesai, karena barang rusak sering baru ketahuan saat dibuka. Semua insiden ada di menu **Shipping > Insiden & Klaim**, dengan penanda kalau estimasi selesainya terlewat. Insiden dilaporkan dan ditangani lewat halaman sendiri (bukan dialog): status dipilih dengan tombol, estimasi selesai punya pintasan (besok, +3, +7 hari), dan setiap perubahan status, catatan, solusi, atau klaim masuk ke **Riwayat Kejadian** di samping.
+
+### Dashboard
+
+Halaman `/dashboard` dibangun dari satu endpoint (`Dashboard?range=30`) yang lewat `dashboard.service` dan `dashboard.repository`, terpisah dari modul plan. Isinya: lima angka utama (plan, dalam perjalanan, biaya angkut, utilisasi muatan, bebas insiden) dengan perbandingan ke periode sebelumnya, tren per hari atau per minggu (bisa diganti antara jumlah plan, berat, dan biaya), status plan, daftar yang perlu tindakan, jadwal berangkat 7 hari ke depan, tujuan dan carrier teratas, utilisasi per jenis kendaraan, insiden per jenis, dan tabel plan terbaru. Periode dipilih di pojok kanan atas, data dimuat ulang tiap menit. Klik potongan donat atau batang tujuan dan carrier untuk menyaring tabel plan di bawahnya. Periode dihitung dari tanggal berangkat plan; pembatalan tidak dihitung di angka volume.
+
+Untuk mencoba dashboard dengan data yang ramai, ada skrip data contoh: `pnpm db:seed-demo` menambah sekitar 150 plan dan insiden selama 100 hari terakhir (nomor `SP-DEMO-xxxx`), dan `pnpm db:seed-demo --reset` membuangnya lalu membuat ulang. Skrip ini tidak ikut `db:migrate`, jadi jangan dijalankan di database produksi.
 
 ## Yang belum selesai
 
