@@ -28,7 +28,11 @@ function claimFields(body: Record<string, unknown>) {
 
 export const shippingIncidentService = {
   getAll: () => shippingIncidentRepository.getAll(),
-  getByNewId: getOrThrow,
+  /** The incident with its timeline, newest entry first. */
+  async getByNewId(newId: string) {
+    const incident = await getOrThrow(newId);
+    return { ...incident, history: await shippingIncidentRepository.getHistory(incident.newId) };
+  },
 
   async create(body: Record<string, unknown>) {
     const planNewId = requireGuid(requireString(body.planNewId, "planNewId"), "planNewId");
@@ -52,7 +56,7 @@ export const shippingIncidentService = {
       },
       by,
     );
-    return getOrThrow(newId);
+    return this.getByNewId(newId);
   },
 
   /** Updates the handling: status, target date, solution and claim. */
@@ -70,9 +74,9 @@ export const shippingIncidentService = {
     }
 
     const by = await currentActor();
-    await shippingIncidentRepository.update(incident.newId, { status, targetDate: optDate(body.targetDate, "targetDate"), solution, ...claim }, by);
+    await shippingIncidentRepository.update(incident.newId, incident, { status, targetDate: optDate(body.targetDate, "targetDate"), solution, ...claim, note: optString(body.note) }, by);
     // closing the last open incident lets a plan past its ETA complete
     await shippingPlanRepository.autoComplete();
-    return getOrThrow(incident.newId);
+    return this.getByNewId(incident.newId);
   },
 };

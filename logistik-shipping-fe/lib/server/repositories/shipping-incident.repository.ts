@@ -1,4 +1,4 @@
-import { execute, query } from "@/lib/server/db";
+import { execute, query, withTransaction } from "@/lib/server/db";
 
 export const INCIDENT_TYPES = ["DELAY", "ACCIDENT", "DAMAGED", "SHORTAGE", "TEMPERATURE", "RETURN", "OTHER"] as const;
 export const INCIDENT_STATUSES = ["OPEN", "IN_PROGRESS", "CLAIM_FILED", "RESOLVED", "REJECTED"] as const;
@@ -33,6 +33,14 @@ export type IncidentRow = {
   updatedDate: Date | null;
 };
 
+export type IncidentHistoryRow = {
+  fromStatus: string | null;
+  toStatus: string;
+  note: string | null;
+  changedBy: string | null;
+  changedDate: Date;
+};
+
 export type IncidentCreateInput = {
   planNewId: string;
   type: IncidentType;
@@ -49,6 +57,8 @@ export type IncidentUpdateInput = {
   solution: string | null;
   claimAmount: number | null;
   claimParty: string | null;
+  /** Progress note shown in the timeline. */
+  note: string | null;
 };
 
 const SELECT = `
@@ -74,27 +84,58 @@ export const shippingIncidentRepository = {
     return rows[0] ?? null;
   },
 
-  async create(input: IncidentCreateInput, by: string) {
-    const rows = await query<{ newId: string }>(
-      `INSERT INTO shipping_incident (incident_no, plan_new_id, type, occurred_date, description, target_date, claim_amount, claim_party, created_by)
-       VALUES ('INC-' || to_char(now(), 'YYMM') || '-' || lpad(nextval('incident_no_seq')::text, 4, '0'),
-               @planNewId, @type, @occurredDate, @description, @targetDate, @claimAmount, @claimParty, @by)
-       RETURNING new_id`,
-      { ...input, by },
-    );
-    return rows[0].newId;
+  getHistory: (incidentNewId: string) =>
+    query<IncidentHistoryRow>(
+      `SELECT from_status, to_status, note, changed_by, changed_date
+       FROM shipping_incident_history WHERE incident_new_id = @incidentNewId ORDER BY changed_date DESC, id DESC`,
+      { incidentNewId },
+    ),
+
+  create(input: IncidentCreateInput, by: string) {
+    return withTransaction(async (tx) => {
+      const rows = await query<{ newId: string }>(
+        `INSERT INTO shipping_incident (incident_no, plan_new_id, type, occurred_date, description, target_date, claim_amount, claim_party, created_by)
+         VALUES ('INC-' || to_char(now(), 'YYMM') || '-' || lpad(nextval('incident_no_seq')::text, 4, '0'),
+                 @planNewId, @type, @occurredDate, @description, @targetDate, @claimAmount, @claimParty, @by)
+         RETURNING new_id`,
+        { ...input, by },
+        tx,
+      );
+      await execute(
+        `INSERT INTO shipping_incident_history (incident_new_id, from_status, to_status, note, changed_by) VALUES (@id, NULL, 'OPEN', 'Insiden dilaporkan', @by)`,
+        { id: rows[0].newId, by },
+        tx,
+      );
+      return rows[0].newId;
+    });
   },
 
-  /** Saves the handling of an incident. `resolved` stamps the closing time. */
-  update(newId: string, input: IncidentUpdateInput, by: string) {
+  /** Saves the handling of an incident and adds a timeline entry describing what changed. */
+  update(newId: string, previous: IncidentRow, input: IncidentUpdateInput, by: string) {
     const closed = input.status === "RESOLVED" || input.status === "REJECTED";
-    return execute(
-      `UPDATE shipping_incident
-       SET status = @status, target_date = @targetDate, solution = @solution, claim_amount = @claimAmount, claim_party = @claimParty,
-           resolved_at = CASE WHEN @closed THEN COALESCE(resolved_at, now()) ELSE NULL END,
-           updated_by = @by, updated_date = now()
-       WHERE new_id = @newId`,
-      { ...input, newId, closed, by },
-    );
+    const changes: string[] = [];
+    if (input.targetDate !== previous.targetDate) changes.push(`estimasi selesai ${input.targetDate ?? "dikosongkan"}`);
+    if (input.solution !== previous.solution) changes.push("solusi diperbarui");
+    if (input.claimAmount !== (previous.claimAmount === null ? null : Number(previous.claimAmount)) || input.claimParty !== previous.claimParty) changes.push("data klaim diperbarui");
+    const note = [input.note, changes.length > 0 ? `(${changes.join(", ")})` : null].filter(Boolean).join(" ") || null;
+
+    return withTransaction(async (tx) => {
+      await execute(
+        `UPDATE shipping_incident
+         SET status = @status, target_date = @targetDate, solution = @solution, claim_amount = @claimAmount, claim_party = @claimParty,
+             resolved_at = CASE WHEN @closed THEN COALESCE(resolved_at, now()) ELSE NULL END,
+             updated_by = @by, updated_date = now()
+         WHERE new_id = @newId`,
+        { status: input.status, targetDate: input.targetDate, solution: input.solution, claimAmount: input.claimAmount, claimParty: input.claimParty, newId, closed, by },
+        tx,
+      );
+      if (input.status !== previous.status || note) {
+        await execute(
+          `INSERT INTO shipping_incident_history (incident_new_id, from_status, to_status, note, changed_by) VALUES (@newId, @from, @to, @note, @by)`,
+          { newId, from: previous.status, to: input.status, note, by },
+          tx,
+        );
+      }
+    });
   },
 };
