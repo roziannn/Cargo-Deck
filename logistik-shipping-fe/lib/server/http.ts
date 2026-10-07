@@ -41,13 +41,19 @@ export async function readJson(req: Request): Promise<Record<string, unknown>> {
   return body as Record<string, unknown>;
 }
 
-/** The authenticated user of the current request (name used for audit columns). */
-export async function currentActor() {
+/** The authenticated user (token claims) of the current request. */
+export async function currentUser() {
   const header = (await headers()).get("authorization") ?? "";
   const token = header.match(/^Bearer\s+(.+)$/i)?.[1];
   const payload = token ? verifyToken(token) : null;
   if (!payload) throw new HttpError(401, "Unauthorized");
-  return payload.name || payload.preferred_username;
+  return payload;
+}
+
+/** Display name of the authenticated user, used for audit columns. */
+export async function currentActor() {
+  const user = await currentUser();
+  return user.name || user.preferred_username;
 }
 
 /**
