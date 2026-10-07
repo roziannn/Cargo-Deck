@@ -2,14 +2,12 @@
 -- Domestic road transport only. Safe to re-run. Seed rows (carriers, drivers, rates, coordinates) are made-up development data.
 
 -- Freight rates live on the vehicle: estimate = base_fee + rate_per_km x distance (rounded up to the next 1,000 IDR).
-ALTER TABLE mst_vehicle
-    ADD COLUMN IF NOT EXISTS base_fee    numeric(14,0),
-    ADD COLUMN IF NOT EXISTS rate_per_km numeric(14,0);
+ALTER TABLE mst_vehicle ADD COLUMN IF NOT EXISTS base_fee numeric(14,0);
+ALTER TABLE mst_vehicle ADD COLUMN IF NOT EXISTS rate_per_km numeric(14,0);
 
 -- Coordinates give the road-distance estimate (straight line x 1.3). Optional: a manual distance can be entered at booking.
-ALTER TABLE mst_location
-    ADD COLUMN IF NOT EXISTS latitude  numeric(9,6),
-    ADD COLUMN IF NOT EXISTS longitude numeric(9,6);
+ALTER TABLE mst_location ADD COLUMN IF NOT EXISTS latitude numeric(9,6);
+ALTER TABLE mst_location ADD COLUMN IF NOT EXISTS longitude numeric(9,6);
 
 CREATE TABLE IF NOT EXISTS mst_carrier (
     id            integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -45,30 +43,25 @@ CREATE TABLE IF NOT EXISTS mst_driver (
 CREATE SEQUENCE IF NOT EXISTS delivery_note_no_seq;
 
 -- status: ... APPROVED -> BOOKED (carrier, driver, plate and cost fixed) -> DISPATCHED (surat jalan issued, truck leaves).
-ALTER TABLE shipping_plan
-    ADD COLUMN IF NOT EXISTS carrier_new_id   uuid REFERENCES mst_carrier (new_id),
-    ADD COLUMN IF NOT EXISTS driver_new_id    uuid REFERENCES mst_driver (new_id),
-    ADD COLUMN IF NOT EXISTS plate_no         varchar(20),
-    ADD COLUMN IF NOT EXISTS distance_km      numeric(9,1),
-    ADD COLUMN IF NOT EXISTS base_fee         numeric(14,0),
-    ADD COLUMN IF NOT EXISTS per_km_fee       numeric(14,0),
-    ADD COLUMN IF NOT EXISTS freight_cost     numeric(14,0),
-    ADD COLUMN IF NOT EXISTS loading_fee      numeric(14,0),
-    ADD COLUMN IF NOT EXISTS other_fee        numeric(14,0),
-    ADD COLUMN IF NOT EXISTS total_cost       numeric(14,0),
-    ADD COLUMN IF NOT EXISTS booking_notes    text,
-    ADD COLUMN IF NOT EXISTS delivery_note_no varchar(30) UNIQUE,
-    ADD COLUMN IF NOT EXISTS dispatched_at    timestamptz;
+-- One statement per line on purpose: some SQL clients split scripts by line or by blank line.
+ALTER TABLE shipping_plan ADD COLUMN IF NOT EXISTS carrier_new_id uuid REFERENCES mst_carrier (new_id);
+ALTER TABLE shipping_plan ADD COLUMN IF NOT EXISTS driver_new_id uuid REFERENCES mst_driver (new_id);
+ALTER TABLE shipping_plan ADD COLUMN IF NOT EXISTS plate_no varchar(20);
+ALTER TABLE shipping_plan ADD COLUMN IF NOT EXISTS distance_km numeric(9,1);
+ALTER TABLE shipping_plan ADD COLUMN IF NOT EXISTS base_fee numeric(14,0);
+ALTER TABLE shipping_plan ADD COLUMN IF NOT EXISTS per_km_fee numeric(14,0);
+ALTER TABLE shipping_plan ADD COLUMN IF NOT EXISTS freight_cost numeric(14,0);
+ALTER TABLE shipping_plan ADD COLUMN IF NOT EXISTS loading_fee numeric(14,0);
+ALTER TABLE shipping_plan ADD COLUMN IF NOT EXISTS other_fee numeric(14,0);
+ALTER TABLE shipping_plan ADD COLUMN IF NOT EXISTS total_cost numeric(14,0);
+ALTER TABLE shipping_plan ADD COLUMN IF NOT EXISTS booking_notes text;
+ALTER TABLE shipping_plan ADD COLUMN IF NOT EXISTS delivery_note_no varchar(30) UNIQUE;
+ALTER TABLE shipping_plan ADD COLUMN IF NOT EXISTS dispatched_at timestamptz;
 
-DO $$
-DECLARE c text;
-BEGIN
-    SELECT conname INTO c FROM pg_constraint
-    WHERE conrelid = 'shipping_plan'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%status%';
-    IF c IS NOT NULL THEN EXECUTE format('ALTER TABLE shipping_plan DROP CONSTRAINT %I', c); END IF;
-    ALTER TABLE shipping_plan ADD CONSTRAINT ck_shipping_plan_status
-        CHECK (status IN ('DRAFT', 'PLANNED', 'APPROVED', 'BOOKED', 'DISPATCHED', 'CANCELLED'));
-END $$;
+-- Widen the allowed statuses. The old check was created inline in 004, so it has the default name.
+ALTER TABLE shipping_plan DROP CONSTRAINT IF EXISTS shipping_plan_status_check;
+ALTER TABLE shipping_plan DROP CONSTRAINT IF EXISTS ck_shipping_plan_status;
+ALTER TABLE shipping_plan ADD CONSTRAINT ck_shipping_plan_status CHECK (status IN ('DRAFT', 'PLANNED', 'APPROVED', 'BOOKED', 'DISPATCHED', 'CANCELLED'));
 
 -- Menus: Master > Carrier, Master > Driver
 INSERT INTO core_menu (name, parent_id, seq, path, created_by)
