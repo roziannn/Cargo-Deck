@@ -10,7 +10,6 @@ import { ShippingBookingDialog } from "@/components/shipping-booking-dialog";
 import { ShippingLoadingDialog } from "@/components/shipping-loading-dialog";
 import { ShippingPickingDialog } from "@/components/shipping-picking-dialog";
 import { IncidentStatusBadge } from "@/components/shipping-incident-status";
-import { ShippingIncidentDialog } from "@/components/shipping-incident-dialog";
 import { PlanStatusBadge, PriorityBadge } from "@/components/shipping-plan-status";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getStoredAuthToken } from "@/lib/api/auth";
-import { INCIDENT_TYPE_LABEL, isIncidentOpen, type ShippingIncident } from "@/lib/api/shipping-incident";
+import { INCIDENT_TYPE_LABEL, isIncidentOpen } from "@/lib/api/shipping-incident";
 import {
   changeShippingPlanStatus,
   dispatchShippingPlan,
@@ -112,8 +111,6 @@ export default function ShippingPlanDetailPage() {
   const [openEta, setOpenEta] = useState(false);
   const [etaDate, setEtaDate] = useState("");
   const [graceDays, setGraceDays] = useState("1");
-  const [openIncident, setOpenIncident] = useState(false);
-  const [selectedIncident, setSelectedIncident] = useState<ShippingIncident | null>(null);
   const [estimate, setEstimate] = useState<FreightEstimate | null>(null);
 
   const load = useCallback(async () => {
@@ -339,8 +336,10 @@ export default function ShippingPlanDetailPage() {
             </>
           )}
           {plan.canReportIncident && (
-            <Button variant="outline" onClick={() => setOpenIncident(true)} disabled={isBusy}>
-              <AlertTriangle className="mr-2 h-4 w-4" /> Lapor Insiden
+            <Button variant="outline" asChild>
+              <Link href={`/shipping/incident/create?planId=${plan.newId}`}>
+                <AlertTriangle className="mr-2 h-4 w-4" /> Lapor Insiden
+              </Link>
             </Button>
           )}
           {plan.status !== "CANCELLED" && plan.status !== "DISPATCHED" && plan.status !== "COMPLETED" && (
@@ -610,10 +609,9 @@ export default function ShippingPlanDetailPage() {
           ) : (
             <div className="space-y-2">
               {plan.incidents.map((incident) => (
-                <button
+                <Link
                   key={incident.newId}
-                  type="button"
-                  onClick={() => setSelectedIncident(incident)}
+                  href={`/shipping/incident/${incident.newId}`}
                   className="flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-left text-sm hover:bg-muted/40"
                 >
                   <div className="space-y-0.5">
@@ -628,7 +626,7 @@ export default function ShippingPlanDetailPage() {
                     </div>
                   </div>
                   <IncidentStatusBadge status={incident.status} />
-                </button>
+                </Link>
               ))}
             </div>
           )}
@@ -744,19 +742,6 @@ export default function ShippingPlanDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {plan.canReportIncident && (
-        <ShippingIncidentDialog key={`new-${plan.incidents.length}`} planNewId={plan.newId} planNo={plan.planNo} open={openIncident} onOpenChange={setOpenIncident} onSaved={() => void load()} />
-      )}
-      {selectedIncident && (
-        <ShippingIncidentDialog
-          key={`${selectedIncident.newId}-${selectedIncident.updatedDate}`}
-          incident={selectedIncident}
-          open
-          onOpenChange={(open) => !open && setSelectedIncident(null)}
-          onSaved={() => void load()}
-        />
-      )}
 
       <Dialog open={openCancel} onOpenChange={setOpenCancel}>
         <DialogContent className="sm:max-w-md">

@@ -64,12 +64,12 @@ Di sisi server alurnya selalu sama: `route.ts` menerima request, `services` beri
 
 Butuh PostgreSQL 13 atau lebih baru (skrip memakai `gen_random_uuid()` dan `trim_scale()`).
 
-Skrip SQL ada di folder `database/` dan harus dijalankan berurutan (001 sampai 009). Semuanya aman diulang. Cara paling mudah adalah lewat perintah migrasi, yang membaca koneksi dari `.env.local` (lihat di bawah) dan menjalankan semua file dalam urutan yang benar:
+Skrip SQL ada di folder `database/` dan harus dijalankan berurutan (001 sampai 010). Semuanya aman diulang. Cara paling mudah adalah lewat perintah migrasi, yang membaca koneksi dari `.env.local` (lihat di bawah) dan menjalankan semua file dalam urutan yang benar:
 
 ```bash
 cd logistik-shipping-fe
 pnpm db:migrate         # semua file
-pnpm db:migrate 9       # hanya dari file 009 ke atas
+pnpm db:migrate 10       # hanya dari file 010 ke atas
 ```
 
 Tiap file dijalankan sebagai satu kesatuan: kalau ada yang gagal, file itu tidak diterapkan sama sekali, dan pesan errornya menyebut nomor barisnya. Perintah ini memakai database yang sama dengan aplikasi, jadi buat `.env.local` dulu.
@@ -124,6 +124,7 @@ Nama tabel dan kolom memakai snake_case. API mengubahnya jadi camelCase di `lib/
 | 005 | unique index username dan email (tanpa membedakan huruf besar-kecil), menu Settings > User |
 | 006 | data contoh: 33 kendaraan, 32 barang (cubstool), 39 lokasi (8 gudang, 31 customer) |
 | 007 | `mst_carrier`, `mst_driver`, kolom booking dan biaya di `shipping_plan`, tarif di kendaraan, koordinat di lokasi, status `BOOKED` dan `DISPATCHED`, menu Carrier dan Driver. Berisi juga data contoh: 33 carrier, 32 driver, tarif per jenis kendaraan, koordinat kota |
+| 010 | `shipping_incident_history`: riwayat kejadian per insiden |
 | 009 | `eta_date`, `grace_days`, data penerimaan di `shipping_plan`, status `COMPLETED`, tabel `shipping_incident`, menu Insiden & Klaim |
 | 008 | kolom picking dan loading di `shipping_plan` dan `shipping_plan_item` (jumlah di-pick/dimuat, checklist, segel, suhu, timbang), status `PICKING` dan `LOADING` |
 
@@ -220,7 +221,7 @@ Aplikasi ini tidak melacak posisi truk. Sebagai gantinya, saat dispatch diisi **
 - staf menekan **Tandai Diterima**, atau
 - ETA + masa tunggu lewat dan tidak ada insiden yang masih terbuka, maka plan jadi `COMPLETED` sendiri. Pengecekannya dilakukan setiap plan dibaca, jadi tidak ada scheduler.
 
-Kalau ada masalah, staf menekan **Lapor Insiden** di plan itu. Jenisnya: terlambat, kecelakaan, barang rusak, barang kurang, suhu keluar batas, retur, lainnya. Setiap insiden punya **estimasi selesai ditangani** yang bisa diatur dan diubah, **solusi**, dan klaim opsional (nilai dan pihak yang ditagih, biasanya carrier). Statusnya Baru, Diproses, Klaim diajukan, Selesai, atau Ditolak. Selama ada insiden yang belum ditutup plan tidak ikut selesai otomatis. Menyelesaikan insiden wajib mengisi solusi, dan mengajukan klaim wajib mengisi nilai dan pihak yang ditagih. Insiden masih bisa dilaporkan sampai 7 hari setelah plan selesai, karena barang rusak sering baru ketahuan saat dibuka. Semua insiden ada di menu **Shipping > Insiden & Klaim**, dengan penanda kalau estimasi selesainya terlewat.
+Kalau ada masalah, staf menekan **Lapor Insiden** di plan itu. Jenisnya: terlambat, kecelakaan, barang rusak, barang kurang, suhu keluar batas, retur, lainnya. Setiap insiden punya **estimasi selesai ditangani** yang bisa diatur dan diubah, **solusi**, dan klaim opsional (nilai dan pihak yang ditagih, biasanya carrier). Statusnya Baru, Diproses, Klaim diajukan, Selesai, atau Ditolak. Selama ada insiden yang belum ditutup plan tidak ikut selesai otomatis. Menyelesaikan insiden wajib mengisi solusi, dan mengajukan klaim wajib mengisi nilai dan pihak yang ditagih. Insiden masih bisa dilaporkan sampai 7 hari setelah plan selesai, karena barang rusak sering baru ketahuan saat dibuka. Semua insiden ada di menu **Shipping > Insiden & Klaim**, dengan penanda kalau estimasi selesainya terlewat. Insiden dilaporkan dan ditangani lewat halaman sendiri (bukan dialog): status dipilih dengan tombol, estimasi selesai punya pintasan (besok, +3, +7 hari), dan setiap perubahan status, catatan, solusi, atau klaim masuk ke **Riwayat Kejadian** di samping.
 
 ## Yang belum selesai
 

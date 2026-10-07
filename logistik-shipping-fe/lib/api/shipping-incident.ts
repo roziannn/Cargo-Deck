@@ -49,6 +49,16 @@ export type ShippingIncident = {
   updatedDate: string | null;
 };
 
+export type ShippingIncidentHistory = {
+  fromStatus: string | null;
+  toStatus: IncidentStatus;
+  note: string | null;
+  changedBy: string | null;
+  changedDate: string;
+};
+
+export type ShippingIncidentDetail = ShippingIncident & { history: ShippingIncidentHistory[] };
+
 export type IncidentCreatePayload = {
   planNewId: string;
   type: IncidentType;
@@ -63,6 +73,8 @@ export type IncidentUpdatePayload = {
   solution?: string;
   claimAmount?: number;
   claimParty?: string;
+  /** Progress note for the timeline. */
+  note?: string;
 };
 
 const path = (newId: string) => apiPath(`ShippingIncident/${encodeURIComponent(newId)}`);
@@ -70,8 +82,11 @@ const path = (newId: string) => apiPath(`ShippingIncident/${encodeURIComponent(n
 export const listShippingIncidents = (token?: string) =>
   apiFetch<ShippingIncident[]>(apiPath("ShippingIncident"), { method: "GET", token, cache: "no-store" });
 
+export const getShippingIncident = (newId: string, token?: string) =>
+  apiFetch<ShippingIncidentDetail>(path(newId), { method: "GET", token, cache: "no-store" });
+
 export const createShippingIncident = (payload: IncidentCreatePayload, token?: string) =>
-  apiFetch<ShippingIncident>(apiPath("ShippingIncident"), { method: "POST", body: JSON.stringify(payload), token });
+  apiFetch<ShippingIncidentDetail>(apiPath("ShippingIncident"), { method: "POST", body: JSON.stringify(payload), token });
 
 export const updateShippingIncident = (newId: string, payload: IncidentUpdatePayload, token?: string) =>
-  apiFetch<ShippingIncident>(path(newId), { method: "PUT", body: JSON.stringify(payload), token });
+  apiFetch<ShippingIncidentDetail>(path(newId), { method: "PUT", body: JSON.stringify(payload), token });
