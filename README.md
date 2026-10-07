@@ -28,7 +28,7 @@ DRAFT -> PLANNED -> APPROVED -> BOOKED -> PICKING -> LOADING -> DISPATCHED
 - `APPROVED`: plan disetujui. Setelah ini muatan dan data plan tidak bisa diubah lagi.
 - `BOOKED`: carrier, driver, nomor polisi, dan biaya sudah ditetapkan. Booking masih bisa diubah.
 - `PICKING`: barang diambil dari gudang dan dikemas. Jumlah yang benar-benar di-pick dicatat per barang; kalau kurang dari rencana, catatan wajib diisi.
-- `LOADING`: pemuatan ke truk. Dicatat checklist kendaraan (dokumen/KIR, kebersihan, kondisi, driver siap, muatan terikat), nomor segel, suhu (wajib untuk cold chain), timbang (bruto dan tara), dan jumlah yang benar-benar dimuat. Dispatch baru bisa kalau semuanya lengkap dan berat netto tidak melebihi kapasitas.
+- `LOADING`: pemuatan ke truk. Dicatat checklist kendaraan (dokumen/KIR, kebersihan, kondisi, driver siap, muatan terikat), nomor segel, suhu (wajib untuk cold chain), timbang (bruto dan tara, opsional), dan jumlah yang benar-benar dimuat. Dispatch baru bisa kalau semuanya lengkap (kecuali timbang) dan berat netto, kalau ditimbang, tidak melebihi kapasitas.
 - `DISPATCHED`: surat jalan sudah diterbitkan dan truk berangkat. Booking dan plan terkunci.
 - `CANCELLED`: dibatalkan, wajib ada alasan. Bisa dilakukan sampai `LOADING`, tidak bisa lagi setelah `DISPATCHED`. Tidak bisa dibuka lagi.
 

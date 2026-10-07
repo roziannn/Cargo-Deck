@@ -197,7 +197,8 @@ function loadingReadiness(plan: ShippingPlanRow, items: ShippingPlanItemRow[]): 
   const tare = plan.tareWeightKg !== null ? Number(plan.tareWeightKg) : null;
   let netWeightKg: number | null = null;
   if (gross === null || tare === null) {
-    missing.push("Hasil timbang (berat kosong dan berat isi) belum diisi.");
+    // Timbang is optional: not every pickup has a weighbridge. A half-filled pair is flagged, never blocking.
+    if (gross !== null || tare !== null) warnings.push("Hasil timbang belum lengkap: isi berat kosong dan berat isi, atau kosongkan keduanya.");
   } else {
     netWeightKg = Math.round((gross - tare) * 100) / 100;
     const payload = plan.vehicleMaxPayload !== null ? Number(plan.vehicleMaxPayload) : null;
