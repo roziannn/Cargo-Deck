@@ -369,7 +369,7 @@ function CargoBoxes({ boxes, bed, floor, highlightKey }: { boxes: PlacedBox[]; b
 
     const matrix = new THREE.Matrix4();
     const color = new THREE.Color();
-    const dim = new THREE.Color("#cbd5e1");
+    const dim = new THREE.Color("#d3dbe6");
 
     boxes.forEach((b, i) => {
       const cx = -bin.length / 2 + b.x + b.l / 2;
@@ -379,7 +379,7 @@ function CargoBoxes({ boxes, bed, floor, highlightKey }: { boxes: PlacedBox[]; b
       m.setMatrixAt(i, matrix);
 
       color.set(b.color);
-      if (highlightKey && b.productKey !== highlightKey) color.lerp(dim, 0.82);
+      if (highlightKey && b.productKey !== highlightKey) color.lerp(dim, 0.6); // others stay recognisable, just paler
       m.setColorAt(i, color);
 
       // packing tape along the length, in the middle of the top face

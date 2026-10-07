@@ -405,6 +405,8 @@ function ShippingSimulation() {
     toast.success("Layout disimpan di browser ini. Buka dari Shipping Plan untuk menyimpan permanen.");
   }
 
+  // a removed item must not leave the scene stuck in highlight mode
+  const highlightKey = hoverItem && selectedItems.some((item) => item.id === hoverItem) ? hoverItem : null;
   const volumeTone = layout.volumePct > 95 ? "bg-red-500" : layout.volumePct > 80 ? "bg-amber-400" : "bg-emerald-500";
 
   return (
@@ -578,14 +580,17 @@ function ShippingSimulation() {
                   return (
                     <div
                       key={item.id}
-                      onMouseEnter={() => setHoverItem(item.id)}
-                      onMouseLeave={() => setHoverItem(null)}
                       className={cn(
                         "rounded-xl border bg-white p-3 shadow-sm transition-colors dark:bg-slate-900",
-                        hoverItem === item.id ? "border-blue-300 dark:border-blue-500/60" : "border-slate-200 dark:border-slate-700",
+                        highlightKey === item.id ? "border-blue-300 dark:border-blue-500/60" : "border-slate-200 dark:border-slate-700",
                       )}
                     >
-                      <div className="flex items-start gap-3">
+                      <div
+                        className="flex items-start gap-3"
+                        onMouseEnter={() => setHoverItem(item.id)}
+                        onMouseLeave={() => setHoverItem(null)}
+                        title="Arahkan kursor ke sini untuk menyorot produk ini di truk"
+                      >
                         <span className={cn("mt-0.5 h-8 w-8 shrink-0 rounded-md shadow-inner", item.color)} />
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{item.label}</div>
@@ -677,7 +682,7 @@ function ShippingSimulation() {
                 boxes={layout.placed}
                 zoom={zoom}
                 preset={view}
-                highlightKey={hoverItem}
+                highlightKey={highlightKey}
               />
             </Suspense>
           </Canvas>
