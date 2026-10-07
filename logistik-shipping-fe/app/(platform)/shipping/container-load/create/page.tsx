@@ -35,7 +35,6 @@ type SelectedProductItem = {
   id: string;
   value: string; // cubstool newId
   label: string;
-  weight: number;
   count: string;
   color: string; // tailwind bg class
   colorHex: string;
@@ -105,7 +104,6 @@ function createSelectedItem(product: { value: string; label: string }): Selected
     id: `${product.value}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     value: product.value,
     label: product.label,
-    weight: product.weight,
     count: "1",
     color: token.badgeClass,
     colorHex: token.hex,
@@ -134,46 +132,13 @@ function toPackBoxes(items: SelectedProductItem[], specs: Record<string, Product
       id: `${item.id}-${i}`,
       productKey: item.id,
       color: item.colorHex,
-      weight: item.weight ?? 0, // saved drafts from before this field existed have no weight
+      l,
+      w,
+      h,
+      // heavier cartons are packed first so they end up on the floor, lighter ones above them
+      weight: spec?.weightKg ?? 0,
     }));
   });
-
-  // Heaviest first so it lands on the floor; the fill order below then puts lighter units in higher layers.
-  // Array.sort is stable, so equal weights keep their selection order.
-  expandedUnits.sort((a, b) => b.weight - a.weight);
-
-  const totalUnits = expandedUnits.length;
-  const visibleUnits = Math.min(totalUnits, slotCapacity);
-  const hiddenUnits = Math.max(0, totalUnits - visibleUnits);
-  const blocks: CargoBlock[] = [];
-
-  for (let index = 0; index < visibleUnits; index += 1) {
-    // Fill the whole floor (layer 0) before starting layer 1: across the width first, then along the length.
-    const layer = Math.floor(index / floorCapacity);
-    const onFloor = index % floorCapacity;
-    const row = onFloor % rows;
-    const column = Math.floor(onFloor / rows);
-
-    const x = -usableLength / 2 + unitLength / 2 + column * unitLength;
-    const z = -usableWidth / 2 + unitWidth / 2 + row * unitWidth;
-    const y = FLOOR_CLEARANCE + unitHeight / 2 + layer * unitHeight;
-
-    blocks.push({
-      id: expandedUnits[index]?.id ?? `block-${index}`,
-      position: [x, y, z],
-      size: [unitLength, unitHeight, unitWidth],
-      color: expandedUnits[index]?.color ?? "#38bdf8",
-    });
-  }
-
-  return {
-    blocks,
-    totalUnits,
-    visibleUnits,
-    hiddenUnits,
-    slotCapacity,
-    utilizationPct: totalUnits > 0 ? Math.min((visibleUnits / slotCapacity) * 100, 100) : 0,
-  };
 }
 
 function loadDraft() {
