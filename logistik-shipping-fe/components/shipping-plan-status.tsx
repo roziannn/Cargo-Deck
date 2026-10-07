@@ -7,6 +7,8 @@ const STATUS_STYLE: Record<ShippingPlanStatus, string> = {
   PLANNED: "border-sky-200 bg-sky-100 text-sky-700 hover:bg-sky-100",
   APPROVED: "border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-100",
   BOOKED: "border-indigo-200 bg-indigo-100 text-indigo-700 hover:bg-indigo-100",
+  PICKING: "border-orange-200 bg-orange-100 text-orange-700 hover:bg-orange-100",
+  LOADING: "border-violet-200 bg-violet-100 text-violet-700 hover:bg-violet-100",
   DISPATCHED: "border-teal-200 bg-teal-100 text-teal-700 hover:bg-teal-100",
   CANCELLED: "border-red-200 bg-red-100 text-red-700 hover:bg-red-100",
 };

@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getStoredAuthToken } from "@/lib/api/auth";
 import { formatPlanDate, listShippingPlans, type ShippingPlan, type ShippingPlanStatus } from "@/lib/api/shipping-plan";
 
-const STATUS_FILTERS: ("ALL" | ShippingPlanStatus)[] = ["ALL", "DRAFT", "PLANNED", "APPROVED", "BOOKED", "DISPATCHED", "CANCELLED"];
+const STATUS_FILTERS: ("ALL" | ShippingPlanStatus)[] = ["ALL", "DRAFT", "PLANNED", "APPROVED", "BOOKED", "PICKING", "LOADING", "DISPATCHED", "CANCELLED"];
 
 export default function ShippingPlanListPage() {
   const [data, setData] = useState<ShippingPlan[]>([]);

@@ -1,6 +1,6 @@
 import { apiFetch, apiPath } from "@/lib/api-client";
 
-export type ShippingPlanStatus = "DRAFT" | "PLANNED" | "APPROVED" | "BOOKED" | "DISPATCHED" | "CANCELLED";
+export type ShippingPlanStatus = "DRAFT" | "PLANNED" | "APPROVED" | "BOOKED" | "PICKING" | "LOADING" | "DISPATCHED" | "CANCELLED";
 export type ShippingPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
 export type SpecialHandling = "COLD_CHAIN" | "FRAGILE" | "HAZARDOUS";
 
@@ -44,6 +44,18 @@ export type ShippingPlan = {
   bookingNotes: string | null;
   deliveryNoteNo: string | null;
   dispatchedAt: string | null;
+  // picking, loading checklist, seal and weighbridge
+  pickingNotes: string | null;
+  chkVehiclePapers: boolean;
+  chkVehicleClean: boolean;
+  chkVehicleCondition: boolean;
+  chkDriverReady: boolean;
+  chkCargoSecured: boolean;
+  loadingTempC: number | null;
+  sealNo: string | null;
+  grossWeightKg: string | null;
+  tareWeightKg: string | null;
+  loadingNotes: string | null;
 };
 
 export type ShippingPlanItem = {
@@ -51,7 +63,23 @@ export type ShippingPlanItem = {
   itemCode: string;
   itemName: string;
   unitWeightKg: string | null;
+  /** Planned quantity. */
   qty: number;
+  /** Quantity picked in the warehouse (null until picking is recorded). */
+  pickedQty: number | null;
+  /** Quantity really loaded on the truck (null until loading is recorded). */
+  loadedQty: number | null;
+};
+
+export type LoadingReadiness = {
+  /** True when the plan may be dispatched. */
+  complete: boolean;
+  /** What still blocks dispatch. */
+  missing: string[];
+  /** Things worth a second look that do not block dispatch. */
+  warnings: string[];
+  loadedWeightKg: number;
+  netWeightKg: number | null;
 };
 
 export type ShippingPlanHistory = {
@@ -62,7 +90,7 @@ export type ShippingPlanHistory = {
   changedDate: string;
 };
 
-export type ShippingPlanDetail = ShippingPlan & { items: ShippingPlanItem[]; history: ShippingPlanHistory[] };
+export type ShippingPlanDetail = ShippingPlan & { items: ShippingPlanItem[]; history: ShippingPlanHistory[]; readiness: LoadingReadiness };
 
 export type ShippingPlanHeaderPayload = {
   originLocationNewId: string;
@@ -180,6 +208,28 @@ export function getShippingPlanEstimate(newId: string, params: { distanceKm?: nu
 
 export const saveShippingPlanBooking = (newId: string, payload: BookingPayload, token?: string) =>
   apiFetch<ShippingPlanDetail>(path(newId, "/booking"), { method: "PUT", body: JSON.stringify(payload), token });
+
+export const startShippingPlanPicking = (newId: string, token?: string) =>
+  apiFetch<ShippingPlanDetail>(path(newId, "/start-picking"), { method: "POST", token });
+
+export const saveShippingPlanPicking = (
+  newId: string,
+  payload: { items: { cubstoolNewId: string; pickedQty: number }[]; notes?: string; complete: boolean },
+  token?: string,
+) => apiFetch<ShippingPlanDetail>(path(newId, "/picking"), { method: "PUT", body: JSON.stringify(payload), token });
+
+export type LoadingPayload = {
+  items: { cubstoolNewId: string; loadedQty: number }[];
+  checklist: { vehiclePapers: boolean; vehicleClean: boolean; vehicleCondition: boolean; driverReady: boolean; cargoSecured: boolean };
+  loadingTempC?: number;
+  sealNo?: string;
+  grossWeightKg?: number;
+  tareWeightKg?: number;
+  notes?: string;
+};
+
+export const saveShippingPlanLoading = (newId: string, payload: LoadingPayload, token?: string) =>
+  apiFetch<ShippingPlanDetail>(path(newId, "/loading"), { method: "PUT", body: JSON.stringify(payload), token });
 
 export const dispatchShippingPlan = (newId: string, token?: string) =>
   apiFetch<ShippingPlanDetail>(path(newId, "/dispatch"), { method: "POST", token });

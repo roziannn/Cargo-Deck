@@ -14,6 +14,7 @@ import { mstCarrierRepository, mstDriverRepository } from "@/lib/server/reposito
 import {
   shippingPlanRepository,
   type ShippingPlanHeaderInput,
+  type ShippingPlanItemRow,
   type ShippingPlanRow,
   type ShippingPlanStatus,
 } from "@/lib/server/repositories/shipping-plan.repository";
@@ -159,12 +160,89 @@ function computeEstimate(
   return { distanceKm, distanceSource, baseFee, perKmFee, freightCost: freight, loadingFee, otherFee, totalCost: freight + loadingFee + otherFee, missing: null };
 }
 
+export type LoadingReadiness = {
+  /** True when the plan may be dispatched. */
+  complete: boolean;
+  /** What still blocks dispatch. */
+  missing: string[];
+  /** Things worth a second look that do not block dispatch. */
+  warnings: string[];
+  loadedWeightKg: number;
+  netWeightKg: number | null;
+};
+
+function loadingReadiness(plan: ShippingPlanRow, items: ShippingPlanItemRow[]): LoadingReadiness {
+  const missing: string[] = [];
+  const warnings: string[] = [];
+
+  const loadedUnits = items.reduce((sum, item) => sum + (item.loadedQty ?? 0), 0);
+  const loadedWeightKg = items.reduce((sum, item) => sum + (item.loadedQty ?? 0) * Number(item.unitWeightKg ?? 0), 0);
+  if (items.some((item) => item.loadedQty === null)) missing.push("Jumlah yang dimuat belum diisi untuk semua barang.");
+  else if (loadedUnits === 0) missing.push("Tidak ada barang yang dimuat.");
+
+  const checks: [boolean, string][] = [
+    [plan.chkVehiclePapers, "KIR dan STNK kendaraan"],
+    [plan.chkVehicleClean, "Kebersihan bak"],
+    [plan.chkVehicleCondition, "Kondisi kendaraan"],
+    [plan.chkDriverReady, "Kesiapan driver"],
+    [plan.chkCargoSecured, "Muatan sudah diikat / diamankan"],
+  ];
+  const unchecked = checks.filter(([ok]) => !ok).map(([, label]) => label);
+  if (unchecked.length > 0) missing.push(`Checklist belum lengkap: ${unchecked.join(", ")}.`);
+
+  if (plan.specialHandling === "COLD_CHAIN" && plan.loadingTempC === null) missing.push("Suhu bak saat muat belum dicatat (cold chain).");
+  if (!plan.sealNo) missing.push("Nomor segel belum diisi.");
+
+  const gross = plan.grossWeightKg !== null ? Number(plan.grossWeightKg) : null;
+  const tare = plan.tareWeightKg !== null ? Number(plan.tareWeightKg) : null;
+  let netWeightKg: number | null = null;
+  if (gross === null || tare === null) {
+    missing.push("Hasil timbang (berat kosong dan berat isi) belum diisi.");
+  } else {
+    netWeightKg = Math.round((gross - tare) * 100) / 100;
+    const payload = plan.vehicleMaxPayload !== null ? Number(plan.vehicleMaxPayload) : null;
+    if (payload !== null && netWeightKg > payload) {
+      missing.push(`Berat muatan hasil timbang ${netWeightKg} kg melebihi max payload kendaraan ${payload} kg.`);
+    }
+    if (loadedWeightKg > 0 && Math.abs(netWeightKg - loadedWeightKg) / loadedWeightKg > 0.15) {
+      warnings.push(`Berat hasil timbang (${netWeightKg} kg) berbeda lebih dari 15% dari berat muatan di sistem (${Math.round(loadedWeightKg * 10) / 10} kg).`);
+    }
+  }
+
+  const short = items.filter((item) => item.loadedQty !== null && item.loadedQty < item.qty);
+  if (short.length > 0) warnings.push(`${short.length} barang dimuat kurang dari rencana. Surat jalan memakai jumlah yang benar-benar dimuat.`);
+
+  return { complete: missing.length === 0, missing, warnings, loadedWeightKg: Math.round(loadedWeightKg * 10) / 10, netWeightKg };
+}
+
+/** Integer in [0, max], or a 400 naming the item. */
+function qtyInRange(value: unknown, max: number, label: string) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0 || n > max) throw new HttpError(400, `${label}: jumlah harus bilangan bulat antara 0 dan ${max}.`);
+  return n;
+}
+
+/** Matches the submitted quantities to the plan's items, one entry per item. */
+function matchItems(items: ShippingPlanItemRow[], raw: unknown, field: "pickedQty" | "loadedQty", limit: (item: ShippingPlanItemRow) => number) {
+  const list = Array.isArray(raw) ? raw : [];
+  const byId = new Map<string, Record<string, unknown>>();
+  for (const entry of list) {
+    const e = (typeof entry === "object" && entry !== null ? entry : {}) as Record<string, unknown>;
+    byId.set(String(e.cubstoolNewId ?? "").toLowerCase(), e);
+  }
+  return items.map((item) => {
+    const entry = byId.get(item.cubstoolNewId.toLowerCase());
+    if (!entry) throw new HttpError(400, `${item.itemName}: jumlah belum diisi.`);
+    return { cubstoolNewId: item.cubstoolNewId, qty: qtyInRange(entry[field], limit(item), item.itemName) };
+  });
+}
+
 const EDITABLE: ShippingPlanStatus[] = ["DRAFT", "PLANNED"];
 
 // action -> [allowed from statuses, resulting status]
 const TRANSITIONS: Record<string, [ShippingPlanStatus[], ShippingPlanStatus]> = {
   approve: [["PLANNED"], "APPROVED"],
-  cancel: [["DRAFT", "PLANNED", "APPROVED", "BOOKED"], "CANCELLED"],
+  cancel: [["DRAFT", "PLANNED", "APPROVED", "BOOKED", "PICKING", "LOADING"], "CANCELLED"],
 };
 
 export const shippingPlanService = {
@@ -176,7 +254,7 @@ export const shippingPlanService = {
       shippingPlanRepository.getItems(plan.newId),
       shippingPlanRepository.getHistory(plan.newId),
     ]);
-    return { ...plan, items, history };
+    return { ...plan, items, history, readiness: loadingReadiness(plan, items) };
   },
 
   async create(body: Record<string, unknown>) {
@@ -299,7 +377,9 @@ export const shippingPlanService = {
   /** Issues the surat jalan number and sends the truck off. */
   async dispatch(newId: string) {
     const plan = await getPlanOrThrow(newId);
-    if (plan.status !== "BOOKED") throw new HttpError(409, `Only a booked plan can be dispatched (status is ${plan.status}).`);
+    if (plan.status !== "LOADING") throw new HttpError(409, `Only a plan that is being loaded can be dispatched (status is ${plan.status}).`);
+    const readiness = loadingReadiness(plan, await shippingPlanRepository.getItems(plan.newId));
+    if (!readiness.complete) throw new HttpError(400, `Loading belum lengkap: ${readiness.missing.join(" ")}`);
     const by = await currentActor();
     const noteNo = await shippingPlanRepository.dispatch(plan.newId, by);
     if (!noteNo) throw new HttpError(409, "The plan status was changed by someone else. Reload and try again.");
@@ -309,11 +389,92 @@ export const shippingPlanService = {
   /** Everything the printed surat jalan needs. A booked plan gives a preview without a number yet. */
   async getDeliveryNote(newId: string) {
     const plan = await getPlanOrThrow(newId);
-    if (plan.status !== "BOOKED" && plan.status !== "DISPATCHED") {
+    if (!["BOOKED", "PICKING", "LOADING", "DISPATCHED"].includes(plan.status)) {
       throw new HttpError(409, "A delivery note is available once the plan is booked.");
     }
     const [note, items] = await Promise.all([shippingPlanRepository.getDeliveryNote(plan.newId), shippingPlanRepository.getItems(plan.newId)]);
     if (!note) throw new HttpError(404, "Shipping plan not found.");
     return { planNo: plan.planNo, status: plan.status, preview: plan.status !== "DISPATCHED", plan, note, items };
+  },
+
+  /** BOOKED -> PICKING: the warehouse starts picking and packing. */
+  async startPicking(newId: string) {
+    const plan = await getPlanOrThrow(newId);
+    if (plan.status !== "BOOKED") throw new HttpError(409, `Picking can only start for a booked plan (status is ${plan.status}).`);
+    const by = await currentActor();
+    const ok = await shippingPlanRepository.changeStatus(plan.newId, "BOOKED", "PICKING", "Picking & packing dimulai", by);
+    if (!ok) throw new HttpError(409, "The plan status was changed by someone else. Reload and try again.");
+    return this.getDetail(plan.newId);
+  },
+
+  /** Records the picked quantities. With `complete` the plan moves on to LOADING. */
+  async savePicking(newId: string, body: Record<string, unknown>) {
+    const plan = await getPlanOrThrow(newId);
+    if (plan.status !== "PICKING") throw new HttpError(409, `Picking is only open while the plan is in PICKING (status is ${plan.status}).`);
+    const items = await shippingPlanRepository.getItems(plan.newId);
+    const picked = matchItems(items, body.items, "pickedQty", (item) => item.qty);
+    const notes = optString(body.notes);
+    const complete = body.complete === true;
+
+    const pickedUnits = picked.reduce((sum, i) => sum + i.qty, 0);
+    const plannedUnits = items.reduce((sum, i) => sum + i.qty, 0);
+    if (complete) {
+      if (pickedUnits === 0) throw new HttpError(400, "Tidak ada barang yang di-pick.");
+      if (pickedUnits < plannedUnits && !notes) throw new HttpError(400, "Ada selisih picking dari rencana. Isi catatan penyebabnya (stok kurang, rusak, dan sebagainya).");
+    }
+
+    const by = await currentActor();
+    const ok = await shippingPlanRepository.savePicking(
+      plan.newId,
+      { items: picked.map((i) => ({ cubstoolNewId: i.cubstoolNewId, pickedQty: i.qty })), notes },
+      complete,
+      by,
+      `Picking & packing selesai: ${pickedUnits} dari ${plannedUnits} karton${notes ? ` (${notes})` : ""}`,
+    );
+    if (!ok) throw new HttpError(409, "The plan status was changed by someone else. Reload and try again.");
+    return this.getDetail(plan.newId);
+  },
+
+  /** Records the loading checklist, seal, weighbridge readings and the quantities really loaded (plan stays in LOADING). */
+  async saveLoading(newId: string, body: Record<string, unknown>) {
+    const plan = await getPlanOrThrow(newId);
+    if (plan.status !== "LOADING") throw new HttpError(409, `Loading data can only be saved while the plan is in LOADING (status is ${plan.status}).`);
+    const items = await shippingPlanRepository.getItems(plan.newId);
+    const loaded = matchItems(items, body.items, "loadedQty", (item) => item.pickedQty ?? item.qty);
+
+    const checklist = (typeof body.checklist === "object" && body.checklist !== null ? body.checklist : {}) as Record<string, unknown>;
+    const weight = (value: unknown, label: string) => {
+      const n = optNumber(value, label);
+      if (n !== null && n < 0) throw new HttpError(400, `${label} tidak boleh negatif.`);
+      return n;
+    };
+    const gross = weight(body.grossWeightKg, "Berat isi");
+    const tare = weight(body.tareWeightKg, "Berat kosong");
+    if (gross !== null && tare !== null && gross <= tare) throw new HttpError(400, "Berat isi harus lebih besar dari berat kosong.");
+    const temp = optNumber(body.loadingTempC, "Suhu");
+    if (temp !== null && (temp < -40 || temp > 60)) throw new HttpError(400, "Suhu harus antara -40 dan 60 °C.");
+    const sealNo = optString(body.sealNo);
+    if (sealNo && sealNo.length > 50) throw new HttpError(400, "Nomor segel terlalu panjang (maksimal 50 karakter).");
+
+    const by = await currentActor();
+    const ok = await shippingPlanRepository.saveLoading(
+      plan.newId,
+      {
+        items: loaded.map((i) => ({ cubstoolNewId: i.cubstoolNewId, loadedQty: i.qty })),
+        chkVehiclePapers: checklist.vehiclePapers === true,
+        chkVehicleClean: checklist.vehicleClean === true,
+        chkVehicleCondition: checklist.vehicleCondition === true,
+        chkDriverReady: checklist.driverReady === true,
+        chkCargoSecured: checklist.cargoSecured === true,
+        loadingTempC: temp,
+        sealNo,
+        grossWeightKg: gross,
+        tareWeightKg: tare,
+        notes: optString(body.notes),
+      },
+      by,
+    );
+    if (!ok) throw new HttpError(409, "The plan status was changed by someone else. Reload and try again.");
+    return this.getDetail(plan.newId);
   },
 };
