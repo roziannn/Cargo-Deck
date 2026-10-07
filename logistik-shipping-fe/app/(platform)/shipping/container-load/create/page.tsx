@@ -2,96 +2,96 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
-import { ContactShadows, Edges, OrbitControls } from "@react-three/drei";
-import { Search, Plus, Box, Trash2, Minus, LayoutPanelTop, ZoomIn, ZoomOut, Check, ChevronsUpDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { Canvas } from "@react-three/fiber";
+import {
+  AlertTriangle,
+  Check,
+  ChevronsUpDown,
+  Minus,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Search,
+  Trash2,
+  Truck,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
+
+import { TruckScene, type CameraPreset } from "@/components/truck-scene";
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { getStoredAuthToken } from "@/lib/api/auth";
-import { listCubstoolLov, listMstCubstools, type CubstoolLovItem } from "@/lib/api/mst-cubstool";
-import { getShippingPlan, saveShippingPlanLoad, type ShippingPlanDetail } from "@/lib/api/shipping-plan";
+import { listMstCubstools, type MstCubstoolItem } from "@/lib/api/mst-cubstool";
 import { getMstVehicleById, listVehicleLov, type VehicleLovItem } from "@/lib/api/mst-vehicle";
+import { getShippingPlan, saveShippingPlanLoad, type ShippingPlanDetail } from "@/lib/api/shipping-plan";
+import { cargoBinFor, packCargo, type PackBox } from "@/lib/cargo-packing";
 import { cn } from "@/lib/utils";
-
-type VehicleDimensions = {
-  length: number;
-  width: number;
-  height: number;
-  floorArea: number;
-};
-
-type ProductColorToken = {
-  badgeClass: string;
-  hex: string;
-};
 
 type SelectedProductItem = {
   id: string;
-  value: string;
+  value: string; // cubstool newId
   label: string;
   weight: number;
   count: string;
-  color: string;
+  color: string; // tailwind bg class
   colorHex: string;
 };
 
-type CargoBlock = {
-  id: string;
-  position: [number, number, number];
-  size: [number, number, number];
-  color: string;
+type ProductSpec = {
+  /** Carton size in metres. */
+  l: number;
+  w: number;
+  h: number;
+  weightKg: number;
+  code: string;
+  /** False when the master data has no usable dimensions and a default carton is used. */
+  hasDimensions: boolean;
 };
 
-type CargoLayout = {
-  blocks: CargoBlock[];
-  totalUnits: number;
-  visibleUnits: number;
-  hiddenUnits: number;
-  slotCapacity: number;
-  utilizationPct: number;
+type VehicleInfo = {
+  name: string;
+  type: string;
+  climate: string;
+  length: number;
+  width: number;
+  height: number;
+  maxPayload: number | null;
 };
 
-type CameraPreset = "top" | "side" | "rear";
-
-const PRODUCT_COLORS: ProductColorToken[] = [
+const PRODUCT_COLORS = [
   { badgeClass: "bg-cyan-400", hex: "#22d3ee" },
   { badgeClass: "bg-lime-500", hex: "#84cc16" },
   { badgeClass: "bg-amber-400", hex: "#fbbf24" },
   { badgeClass: "bg-rose-400", hex: "#fb7185" },
   { badgeClass: "bg-violet-400", hex: "#a78bfa" },
   { badgeClass: "bg-sky-500", hex: "#0ea5e9" },
+  { badgeClass: "bg-orange-400", hex: "#fb923c" },
+  { badgeClass: "bg-emerald-400", hex: "#34d399" },
 ];
 
-const DEFAULT_VEHICLE_DIMENSIONS: VehicleDimensions = {
-  length: 6,
-  width: 2.4,
-  height: 2.5,
-  floorArea: 14.4,
-};
+const DEFAULT_VEHICLE: VehicleInfo = { name: "", type: "", climate: "", length: 6, width: 2.4, height: 2.5, maxPayload: null };
+// used when a product has no usable dimensions in the master data (metres)
+const DEFAULT_CARTON = { l: 0.4, w: 0.3, h: 0.25 };
+const DRAFT_KEY = "shipping-container-load-create-draft";
 
-const SHIPPING_CONTAINER_LOAD_DRAFT_KEY = "shipping-container-load-create-draft";
+const VIEWS: { key: CameraPreset; label: string }[] = [
+  { key: "iso", label: "3D" },
+  { key: "side", label: "Side" },
+  { key: "top", label: "Top" },
+  { key: "rear", label: "Rear" },
+];
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function parseMetricValue(value: string | undefined, fallback: number) {
-  if (!value) return fallback;
-
-  const normalized = value.trim().replace(",", ".");
-  const parsed = Number(normalized);
+function positive(value: string | undefined, fallback: number) {
+  const parsed = Number((value ?? "").trim().replace(",", "."));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function formatMeters(value: number) {
-  return `${value.toFixed(2)} m`;
-}
-
-function formatDimensionsLabel(dimensions: VehicleDimensions) {
-  return `${Math.round(dimensions.length * 100)} x ${Math.round(dimensions.width * 100)} x ${Math.round(dimensions.height * 100)} cm`;
 }
 
 function getProductColorToken(value: string) {
@@ -99,115 +99,40 @@ function getProductColorToken(value: string) {
   return PRODUCT_COLORS[seed % PRODUCT_COLORS.length];
 }
 
-function getProductCode(label: string) {
-  const parts = label.split(/[-|]/).map((part) => part.trim()).filter(Boolean);
-  if (parts.length > 1) {
-    return parts[parts.length - 1] ?? "";
-  }
-
-  return "";
-}
-
-function createSelectedItem(product: CubstoolLovItem): SelectedProductItem {
-  const colorToken = getProductColorToken(product.value);
-
+function createSelectedItem(product: { value: string; label: string }): SelectedProductItem {
+  const token = getProductColorToken(product.value);
   return {
     id: `${product.value}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     value: product.value,
     label: product.label,
     weight: product.weight,
     count: "1",
-    color: colorToken.badgeClass,
-    colorHex: colorToken.hex,
+    color: token.badgeClass,
+    colorHex: token.hex,
   };
 }
 
 function sanitizeCountInput(value: string) {
-  const sanitized = value.replace(/[^\d,]/g, "");
-  const firstCommaIndex = sanitized.indexOf(",");
-
-  if (firstCommaIndex === -1) return sanitized;
-
-  return `${sanitized.slice(0, firstCommaIndex + 1)}${sanitized.slice(firstCommaIndex + 1).replace(/,/g, "")}`;
+  return value.replace(/\D/g, "").slice(0, 5);
 }
 
 function parseCount(value: string) {
-  const normalized = value.trim().replace(",", ".");
-  if (!normalized) return 0;
-
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
 }
 
-function formatCount(value: number) {
-  if (Number.isInteger(value)) return String(value);
-  return String(value).replace(".", ",");
-}
+const fmtCm = (m: number) => Math.round(m * 100);
+const fmtKg = (kg: number) => `${+kg.toFixed(1)} kg`;
 
-function canFitAdditionalUnits(items: SelectedProductItem[], dimensions: VehicleDimensions, additionalUnits: number) {
-  if (additionalUnits <= 0) return true;
-  const nextLayout = buildCargoLayout(items, dimensions);
-  return nextLayout.totalUnits + additionalUnits <= nextLayout.slotCapacity;
-}
-
-function getCapacitySignal(utilizationPct: number) {
-  if (utilizationPct > 95) {
-    return "red";
-  }
-
-  if (utilizationPct > 75) {
-    return "yellow";
-  }
-
-  return "green";
-}
-
-function getVehicleDimensions(detail: {
-  dimensionsL?: string;
-  dimensionsW?: string;
-  floorArea?: string;
-  maxHeight?: string;
-} | null): VehicleDimensions {
-  const length = parseMetricValue(detail?.dimensionsL, DEFAULT_VEHICLE_DIMENSIONS.length);
-  const width = parseMetricValue(detail?.dimensionsW, DEFAULT_VEHICLE_DIMENSIONS.width);
-  const height = parseMetricValue(detail?.maxHeight, DEFAULT_VEHICLE_DIMENSIONS.height);
-  const parsedFloorArea = parseMetricValue(detail?.floorArea, 0);
-
-  return {
-    length,
-    width,
-    height,
-    floorArea: parsedFloorArea > 0 ? parsedFloorArea : length * width,
-  };
-}
-
-function buildCargoLayout(items: SelectedProductItem[], dimensions: VehicleDimensions): CargoLayout {
-  // Preferred unit size; the real unit is stretched below so the grid fills the bed exactly (no gaps).
-  const preferredLength = clamp(dimensions.length / 7.5, 0.5, 1.05);
-  const preferredWidth = clamp(dimensions.width / 3.4, 0.4, 0.8);
-  const preferredHeight = clamp(dimensions.height / 3.2, 0.35, 0.9);
-
-  // Inner space of the bed: minus the 0.06 walls on each side and a hair of clearance.
-  const WALL_CLEARANCE = 0.07;
-  const FLOOR_CLEARANCE = 0.005;
-  const usableLength = Math.max(dimensions.length - WALL_CLEARANCE * 2, preferredLength);
-  const usableWidth = Math.max(dimensions.width - WALL_CLEARANCE * 2, preferredWidth);
-  const usableHeight = Math.max(dimensions.height - 0.1, preferredHeight);
-
-  const columns = Math.max(1, Math.floor(usableLength / preferredLength));
-  const rows = Math.max(1, Math.floor(usableWidth / preferredWidth));
-  const layers = Math.max(1, Math.floor(usableHeight / preferredHeight));
-  const unitLength = usableLength / columns;
-  const unitWidth = usableWidth / rows;
-  const unitHeight = usableHeight / layers;
-
-  const floorCapacity = columns * rows;
-  const slotCapacity = floorCapacity * layers;
-
-  const expandedUnits = items.flatMap((item) => {
-    const unitCount = Math.max(0, Math.round(parseCount(item.count)));
-    return Array.from({ length: unitCount }, (_, index) => ({
-      id: `${item.id}-${index}`,
+function toPackBoxes(items: SelectedProductItem[], specs: Record<string, ProductSpec>): PackBox[] {
+  return items.flatMap((item) => {
+    const spec = specs[item.value];
+    const l = spec?.l ?? DEFAULT_CARTON.l;
+    const w = spec?.w ?? DEFAULT_CARTON.w;
+    const h = spec?.h ?? DEFAULT_CARTON.h;
+    return Array.from({ length: parseCount(item.count) }, (_, i) => ({
+      id: `${item.id}-${i}`,
+      productKey: item.id,
       color: item.colorHex,
       weight: item.weight ?? 0, // saved drafts from before this field existed have no weight
     }));
@@ -251,41 +176,25 @@ function buildCargoLayout(items: SelectedProductItem[], dimensions: VehicleDimen
   };
 }
 
-type ShippingContainerLoadDraft = {
-  zoom: number;
-  selectedContainerType: string;
-  selectedItems: SelectedProductItem[];
-};
-
-function saveShippingContainerLoadDraft(draft: ShippingContainerLoadDraft) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(SHIPPING_CONTAINER_LOAD_DRAFT_KEY, JSON.stringify(draft));
-}
-
-function loadShippingContainerLoadDraft(): ShippingContainerLoadDraft | null {
+function loadDraft() {
   if (typeof window === "undefined") return null;
-
-  const raw = localStorage.getItem(SHIPPING_CONTAINER_LOAD_DRAFT_KEY);
-  if (!raw) return null;
-
   try {
-    const parsed = JSON.parse(raw) as Partial<ShippingContainerLoadDraft>;
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { zoom?: number; selectedContainerType?: string; selectedItems?: SelectedProductItem[] };
     return {
       zoom: typeof parsed.zoom === "number" ? clamp(parsed.zoom, 0.7, 2) : 1.2,
       selectedContainerType: typeof parsed.selectedContainerType === "string" ? parsed.selectedContainerType : "",
-      selectedItems: Array.isArray(parsed.selectedItems)
-        ? parsed.selectedItems.filter((item): item is SelectedProductItem => {
-            return Boolean(
-              item &&
-              typeof item.id === "string" &&
-              typeof item.value === "string" &&
-              typeof item.label === "string" &&
-              typeof item.count === "string" &&
-              typeof item.color === "string" &&
-              typeof item.colorHex === "string",
-            );
-          })
-        : [],
+      selectedItems: (Array.isArray(parsed.selectedItems) ? parsed.selectedItems : []).filter(
+        (item): item is SelectedProductItem =>
+          Boolean(item) &&
+          typeof item.id === "string" &&
+          typeof item.value === "string" &&
+          typeof item.label === "string" &&
+          typeof item.count === "string" &&
+          typeof item.color === "string" &&
+          typeof item.colorHex === "string",
+      ),
     };
   } catch {
     return null;
@@ -304,223 +213,214 @@ function ShippingSimulation() {
   const router = useRouter();
   const planId = useSearchParams().get("planId");
   // With a plan, the plan itself is the source of truth; the browser draft only applies to standalone use.
-  const initialDraft = planId ? null : loadShippingContainerLoadDraft();
+  const initialDraft = planId ? null : loadDraft();
+
   const [zoom, setZoom] = useState(initialDraft?.zoom ?? 1.2);
-  const [cameraPreset, setCameraPreset] = useState<CameraPreset>("side");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [containerTypes, setContainerTypes] = useState<VehicleLovItem[]>([]);
-  const [selectedContainerType, setSelectedContainerType] = useState(initialDraft?.selectedContainerType ?? "");
-  const [isLoadingContainerTypes, setIsLoadingContainerTypes] = useState(true);
-  const [containerTypeError, setContainerTypeError] = useState<string | null>(null);
-  const [openContainerType, setOpenContainerType] = useState(false);
-  const [products, setProducts] = useState<CubstoolLovItem[]>([]);
-  const [selectedItems, setSelectedItems] = useState<SelectedProductItem[]>(initialDraft?.selectedItems ?? []);
+  const [view, setView] = useState<CameraPreset>("iso");
+  const [isPanelOpen, setIsPanelOpen] = useState(true);
+
+  const [vehicles, setVehicles] = useState<VehicleLovItem[]>([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState(initialDraft?.selectedContainerType ?? "");
+  const [vehicle, setVehicle] = useState<VehicleInfo>(DEFAULT_VEHICLE);
+  const [isLoadingVehicles, setIsLoadingVehicles] = useState(true);
+  const [isLoadingVehicle, setIsLoadingVehicle] = useState(false);
+  const [vehicleError, setVehicleError] = useState<string | null>(null);
+  const [openVehicle, setOpenVehicle] = useState(false);
+
+  const [products, setProducts] = useState<MstCubstoolItem[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [productError, setProductError] = useState<string | null>(null);
-  const [openProductSelect, setOpenProductSelect] = useState(false);
-  const [vehicleDimensions, setVehicleDimensions] = useState<VehicleDimensions>(DEFAULT_VEHICLE_DIMENSIONS);
-  const [selectedVehicleName, setSelectedVehicleName] = useState("");
-  const [isLoadingVehicleDetail, setIsLoadingVehicleDetail] = useState(false);
-  const [vehicleDetailError, setVehicleDetailError] = useState<string | null>(null);
-  const [vehicleMaxPayload, setVehicleMaxPayload] = useState<number | null>(null);
-  const [weightByProduct, setWeightByProduct] = useState<Record<string, number>>({});
+  const [openProduct, setOpenProduct] = useState(false);
+  const [selectedItems, setSelectedItems] = useState<SelectedProductItem[]>(initialDraft?.selectedItems ?? []);
+  const [hoverItem, setHoverItem] = useState<string | null>(null);
+
   const [plan, setPlan] = useState<ShippingPlanDetail | null>(null);
   const [isSavingPlan, setIsSavingPlan] = useState(false);
 
+  // ---- data loading ----
   useEffect(() => {
     if (!planId) return;
-    let isMounted = true;
+    let alive = true;
 
     getShippingPlan(planId, getStoredAuthToken() ?? undefined)
       .then((detail) => {
-        if (!isMounted) return;
+        if (!alive) return;
         setPlan(detail);
-        if (detail.vehicleNewId) setSelectedContainerType(detail.vehicleNewId);
+        if (detail.vehicleNewId) setSelectedVehicleId(detail.vehicleNewId);
         if (detail.items.length > 0) {
           setSelectedItems(
-            detail.items.map((item) => ({
-              ...createSelectedItem({ value: item.cubstoolNewId, label: item.itemName }),
-              count: String(item.qty),
-            })),
+            detail.items.map((item) => ({ ...createSelectedItem({ value: item.cubstoolNewId, label: item.itemName }), count: String(item.qty) })),
           );
         }
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : "Gagal mengambil shipping plan."));
 
     return () => {
-      isMounted = false;
+      alive = false;
     };
   }, [planId]);
 
   useEffect(() => {
-    let isMounted = true;
+    let alive = true;
+
+    listVehicleLov(getStoredAuthToken() ?? undefined)
+      .then((rows) => {
+        if (!alive) return;
+        setVehicles(rows);
+        setSelectedVehicleId((current) => (current && rows.some((row) => row.value === current) ? current : (rows[0]?.value ?? "")));
+      })
+      .catch((error) => {
+        if (!alive) return;
+        setVehicles([]);
+        setVehicleError(error instanceof Error ? error.message : "Gagal mengambil data kendaraan.");
+      })
+      .finally(() => alive && setIsLoadingVehicles(false));
 
     listMstCubstools(getStoredAuthToken() ?? undefined)
-      .then((rows) => {
-        if (!isMounted) return;
-        setWeightByProduct(Object.fromEntries(rows.map((row) => [row.newId, Number(row.weight) || 0])));
-      })
-      .catch(() => undefined); // weights are informational; the simulation still works without them
+      .then((rows) => alive && setProducts(rows.filter((row) => row.isActive)))
+      .catch((error) => alive && setProductError(error instanceof Error ? error.message : "Gagal mengambil data produk."))
+      .finally(() => alive && setIsLoadingProducts(false));
 
     return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  function handleZoomIn() {
-    setZoom((current) => Math.min(current + 0.1, 2));
-  }
-
-  function handleZoomOut() {
-    setZoom((current) => Math.max(current - 0.1, 0.7));
-  }
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadContainerTypes() {
-      setIsLoadingContainerTypes(true);
-      setContainerTypeError(null);
-
-      try {
-        const token = getStoredAuthToken() ?? undefined;
-        const rows = await listVehicleLov(token);
-
-        if (!isMounted) return;
-
-        setContainerTypes(rows);
-        setSelectedContainerType((current) => {
-          if (current && rows.some((item) => item.value === current)) return current;
-          return rows[0]?.value ?? "";
-        });
-      } catch (error) {
-        if (!isMounted) return;
-
-        setContainerTypes([]);
-        setSelectedContainerType("");
-        setContainerTypeError(error instanceof Error ? error.message : "Gagal mengambil data container type.");
-      } finally {
-        if (isMounted) {
-          setIsLoadingContainerTypes(false);
-        }
-      }
-    }
-
-    void loadContainerTypes();
-
-    return () => {
-      isMounted = false;
+      alive = false;
     };
   }, []);
 
   useEffect(() => {
-    let isMounted = true;
+    let alive = true;
 
-    async function loadProducts() {
-      setIsLoadingProducts(true);
-      setProductError(null);
-
-      try {
-        const token = getStoredAuthToken() ?? undefined;
-        const rows = await listCubstoolLov(token);
-
-        if (!isMounted) return;
-
-        setProducts(rows);
-      } catch (error) {
-        if (!isMounted) return;
-
-        setProducts([]);
-        setProductError(error instanceof Error ? error.message : "Gagal mengambil data products.");
-      } finally {
-        if (isMounted) {
-          setIsLoadingProducts(false);
-        }
-      }
-    }
-
-    void loadProducts();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadVehicleDetail() {
-      if (!selectedContainerType) {
-        setVehicleDimensions(DEFAULT_VEHICLE_DIMENSIONS);
-        setSelectedVehicleName("");
-        setVehicleMaxPayload(null);
-        setVehicleDetailError(null);
+    async function loadVehicle() {
+      if (!selectedVehicleId) {
+        setVehicle(DEFAULT_VEHICLE);
         return;
       }
 
-      setIsLoadingVehicleDetail(true);
-      setVehicleDetailError(null);
-
+      setIsLoadingVehicle(true);
+      setVehicleError(null);
       try {
-        const token = getStoredAuthToken() ?? undefined;
-        const detail = await getMstVehicleById(selectedContainerType, token);
-
-        if (!isMounted) return;
-
+        const detail = await getMstVehicleById(selectedVehicleId, getStoredAuthToken() ?? undefined);
+        if (!alive) return;
         if (!detail) {
-          setVehicleDimensions(DEFAULT_VEHICLE_DIMENSIONS);
-          setSelectedVehicleName("");
-          setVehicleMaxPayload(null);
-          setVehicleDetailError("Detail vehicle tidak ditemukan.");
+          setVehicle(DEFAULT_VEHICLE);
+          setVehicleError("Detail kendaraan tidak ditemukan.");
           return;
         }
-
-        setVehicleDimensions(getVehicleDimensions(detail));
-        setSelectedVehicleName(detail.name || "");
-        setVehicleMaxPayload(Number(detail.maxPayload) > 0 ? Number(detail.maxPayload) : null);
+        const payload = Number(detail.maxPayload);
+        setVehicle({
+          name: detail.name,
+          type: detail.type,
+          climate: detail.climate,
+          length: positive(detail.dimensionsL, DEFAULT_VEHICLE.length),
+          width: positive(detail.dimensionsW, DEFAULT_VEHICLE.width),
+          height: positive(detail.maxHeight, DEFAULT_VEHICLE.height),
+          maxPayload: payload > 0 ? payload : null,
+        });
       } catch (error) {
-        if (!isMounted) return;
-
-        setVehicleDimensions(DEFAULT_VEHICLE_DIMENSIONS);
-        setSelectedVehicleName("");
-        setVehicleMaxPayload(null);
-        setVehicleDetailError(error instanceof Error ? error.message : "Gagal mengambil detail vehicle.");
+        if (!alive) return;
+        setVehicle(DEFAULT_VEHICLE);
+        setVehicleError(error instanceof Error ? error.message : "Gagal mengambil detail kendaraan.");
       } finally {
-        if (isMounted) {
-          setIsLoadingVehicleDetail(false);
-        }
+        if (alive) setIsLoadingVehicle(false);
       }
     }
 
-    void loadVehicleDetail();
+    void loadVehicle();
 
     return () => {
-      isMounted = false;
+      alive = false;
     };
-  }, [selectedContainerType]);
+  }, [selectedVehicleId]);
 
-  const selectedContainerTypeLabel = containerTypes.find((item) => item.value === selectedContainerType)?.label ?? "";
-  const totalSelectedCount = selectedItems.reduce((sum, item) => sum + parseCount(item.count), 0);
-  const cargoLayout = buildCargoLayout(selectedItems, vehicleDimensions);
-  const capacitySignal = getCapacitySignal(cargoLayout.utilizationPct);
-  const totalWeightKg = selectedItems.reduce((sum, item) => sum + Math.round(parseCount(item.count)) * (weightByProduct[item.value] ?? 0), 0);
-  const isOverweight = vehicleMaxPayload !== null && totalWeightKg > vehicleMaxPayload;
+  // ---- derived data ----
+  const specs = useMemo(() => {
+    const map: Record<string, ProductSpec> = {};
+    for (const row of products) {
+      const l = Number(row.length) / 100;
+      const w = Number(row.width) / 100;
+      const h = Number(row.height) / 100;
+      const hasDimensions = l > 0 && w > 0 && h > 0;
+      map[row.newId] = {
+        l: hasDimensions ? l : DEFAULT_CARTON.l,
+        w: hasDimensions ? w : DEFAULT_CARTON.w,
+        h: hasDimensions ? h : DEFAULT_CARTON.h,
+        weightKg: Number(row.weight) > 0 ? Number(row.weight) : 0,
+        code: row.itemCode,
+        hasDimensions,
+      };
+    }
+    return map;
+  }, [products]);
+
+  const bin = useMemo(() => cargoBinFor(vehicle), [vehicle]);
+  const layout = useMemo(() => packCargo(toPackBoxes(selectedItems, specs), bin), [selectedItems, specs, bin]);
+
+  const totalUnits = selectedItems.reduce((sum, item) => sum + parseCount(item.count), 0);
+  const totalWeightKg = selectedItems.reduce((sum, item) => sum + parseCount(item.count) * (specs[item.value]?.weightKg ?? 0), 0);
+  const notLoaded = layout.unplaced.length;
+  const loadedWeightKg = layout.placed.reduce((sum, box) => sum + (box.weight ?? 0), 0);
+  const isOverweight = vehicle.maxPayload !== null && totalWeightKg > vehicle.maxPayload;
   const planLocked = plan !== null && plan.status !== "DRAFT" && plan.status !== "PLANNED";
+  const selectedVehicleLabel = vehicles.find((item) => item.value === selectedVehicleId)?.label ?? "";
+  const missingDimensions = selectedItems.filter((item) => specs[item.value] && !specs[item.value].hasDimensions);
 
+  const fits = (items: SelectedProductItem[]) => packCargo(toPackBoxes(items, specs), bin).unplaced.length === 0;
+
+  // ---- item handlers ----
+  function handleAddProduct(product: MstCubstoolItem) {
+    const existing = selectedItems.find((item) => item.value === product.newId);
+    const next = existing
+      ? selectedItems.map((item) => (item.id === existing.id ? { ...item, count: String(parseCount(item.count) + 1) } : item))
+      : [...selectedItems, createSelectedItem({ value: product.newId, label: product.name })];
+
+    if (!fits(next)) {
+      toast.error("Kendaraan sudah penuh. Produk ini tidak muat lagi.");
+      return;
+    }
+    setSelectedItems(next);
+  }
+
+  function setItemCount(id: string, requested: number) {
+    const current = selectedItems.find((item) => item.id === id);
+    if (!current) return;
+    const previous = parseCount(current.count);
+    const apply = (count: number) =>
+      setSelectedItems((items) => items.map((item) => (item.id === id ? { ...item, count: String(count) } : item)).filter((item) => parseCount(item.count) > 0));
+
+    if (requested <= previous || fits(selectedItems.map((item) => (item.id === id ? { ...item, count: String(requested) } : item)))) {
+      apply(requested);
+      return;
+    }
+
+    // the requested amount does not fit: find the most that does
+    let lo = previous;
+    let hi = requested;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (fits(selectedItems.map((item) => (item.id === id ? { ...item, count: String(mid) } : item)))) lo = mid;
+      else hi = mid - 1;
+    }
+    apply(lo);
+    toast.error(`Hanya muat ${lo} unit untuk produk ini di kendaraan terpilih.`);
+  }
+
+  // ---- saving ----
   async function handleSavePlanLoad() {
     if (!planId || planLocked) return;
-    if (!selectedContainerType) return toast.error("Pilih container type terlebih dahulu.");
-    if (selectedItems.length === 0) return toast.error("Tambahkan minimal satu product sebelum menyimpan.");
-    if (cargoLayout.hiddenUnits > 0) return toast.error("Jumlah barang melebihi kapasitas kendaraan. Kurangi quantity terlebih dahulu.");
+    if (!selectedVehicleId) return void toast.error("Pilih kendaraan terlebih dahulu.");
+    if (selectedItems.length === 0) return void toast.error("Tambahkan minimal satu produk sebelum menyimpan.");
+    if (notLoaded > 0) return void toast.error(`${notLoaded} unit tidak muat di kendaraan. Kurangi jumlah atau pilih kendaraan lain.`);
 
     setIsSavingPlan(true);
     try {
+      const qtyByProduct = new Map<string, number>();
+      for (const item of selectedItems) qtyByProduct.set(item.value, (qtyByProduct.get(item.value) ?? 0) + parseCount(item.count));
+
       await saveShippingPlanLoad(
         planId,
         {
-          vehicleNewId: selectedContainerType,
-          utilizationPct: Math.round(cargoLayout.utilizationPct * 100) / 100,
-          items: selectedItems.map((item) => ({ cubstoolNewId: item.value, qty: Math.round(parseCount(item.count)) })).filter((item) => item.qty > 0),
+          vehicleNewId: selectedVehicleId,
+          utilizationPct: Math.round(layout.volumePct * 100) / 100,
+          items: [...qtyByProduct].map(([cubstoolNewId, qty]) => ({ cubstoolNewId, qty })),
         },
         getStoredAuthToken() ?? undefined,
       );
@@ -533,226 +433,258 @@ function ShippingSimulation() {
     }
   }
 
-  function handleSaveData() {
-    if (!selectedContainerType) {
-      toast.error("Pilih container type terlebih dahulu.");
-      return;
-    }
-
-    if (selectedItems.length === 0) {
-      toast.error("Tambahkan minimal satu product sebelum menyimpan.");
-      return;
-    }
-
-    saveShippingContainerLoadDraft({
-      zoom,
-      selectedContainerType,
-      selectedItems,
-    });
-    toast.success("Layout container berhasil disimpan.");
+  function handleSaveDraft() {
+    if (!selectedVehicleId) return void toast.error("Pilih kendaraan terlebih dahulu.");
+    if (selectedItems.length === 0) return void toast.error("Tambahkan minimal satu produk sebelum menyimpan.");
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ zoom, selectedContainerType: selectedVehicleId, selectedItems }));
+    toast.success("Layout disimpan di browser ini. Buka dari Shipping Plan untuk menyimpan permanen.");
   }
 
-  function handleAddProduct(product: CubstoolLovItem) {
-    if (!canFitAdditionalUnits(selectedItems, vehicleDimensions, 1)) {
-      toast.error("Kapasitas container sudah 100%. Product tidak bisa ditambahkan lagi.");
-      return;
-    }
-
-    setSelectedItems((current) => [...current, createSelectedItem(product)]);
-  }
-
-  function handleIncreaseProduct(id: string) {
-    if (!canFitAdditionalUnits(selectedItems, vehicleDimensions, 1)) {
-      toast.error("Kapasitas container sudah 100%. Quantity tidak bisa ditambah lagi.");
-      return;
-    }
-
-    setSelectedItems((current) =>
-      current.map((item) => (item.id === id ? { ...item, count: formatCount(parseCount(item.count) + 1) } : item)),
-    );
-  }
-
-  function handleDecreaseProduct(id: string) {
-    setSelectedItems((current) =>
-      current
-        .map((item) => (item.id === id ? { ...item, count: formatCount(Math.max(0, parseCount(item.count) - 1)) } : item))
-        .filter((item) => parseCount(item.count) > 0),
-    );
-  }
-
-  function handleRemoveProduct(id: string) {
-    setSelectedItems((current) => current.filter((item) => item.id !== id));
-  }
-
-  function handleCountChange(id: string, value: string) {
-    const sanitized = sanitizeCountInput(value);
-    setSelectedItems((current) => {
-      const currentItem = current.find((item) => item.id === id);
-      if (!currentItem) return current;
-
-      const nextCount = parseCount(sanitized);
-      const previousCount = parseCount(currentItem.count);
-      const additionalUnits = Math.max(0, nextCount - previousCount);
-
-      if (!canFitAdditionalUnits(current, vehicleDimensions, additionalUnits)) {
-        toast.error("Kapasitas container sudah 100%. Quantity tidak bisa ditambah lagi.");
-        return current;
-      }
-
-      return current.map((item) => (item.id === id ? { ...item, count: sanitized } : item));
-    });
-  }
+  const volumeTone = layout.volumePct > 95 ? "bg-red-500" : layout.volumePct > 80 ? "bg-amber-400" : "bg-emerald-500";
 
   return (
     <div className="relative flex h-full min-h-0 min-w-0 overflow-hidden">
       <Toaster position="top-center" />
+
+      {/* ---------------- left panel ---------------- */}
       <aside
         className={cn(
-          "flex min-h-0 shrink-0 flex-col gap-8 overflow-hidden border-r border-slate-200 bg-white transition-[width,padding] duration-300 ease-out dark:border-slate-800 dark:bg-slate-950",
-          isSidebarOpen ? "w-[400px] min-w-[400px] p-6" : "w-0 min-w-0 border-r-0 px-0 py-6",
+          "flex min-h-0 shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white transition-[width] duration-300 ease-out dark:border-slate-800 dark:bg-slate-950",
+          isPanelOpen ? "w-[380px] min-w-[380px]" : "w-0 min-w-0 border-r-0",
         )}
-        aria-hidden={!isSidebarOpen}
+        aria-hidden={!isPanelOpen}
       >
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-500 dark:text-slate-400">Container Type</label>
-          <Popover open={openContainerType} onOpenChange={setOpenContainerType}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                role="combobox"
-                aria-expanded={openContainerType}
-                disabled={isLoadingContainerTypes || containerTypes.length === 0}
-                className="w-full justify-between border-slate-200 bg-white font-semibold text-slate-700 hover:bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-900"
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <Box className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
-                  <span className="truncate">
-                    {isLoadingContainerTypes ? "Loading container type..." : selectedContainerTypeLabel || "Select container type"}
-                  </span>
-                </span>
-                <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-              <Command>
-                <CommandInput placeholder="Search container type..." />
-                <CommandList>
-                  <CommandEmpty>No container type found.</CommandEmpty>
-                  {containerTypes.map((item) => (
-                    <CommandItem
-                      key={item.value}
-                      value={`${item.label} ${item.value}`}
-                      onSelect={() => {
-                        setSelectedContainerType(item.value);
-                        setOpenContainerType(false);
-                      }}
-                    >
-                      <Check className={cn("mr-2 h-4 w-4", selectedContainerType === item.value ? "opacity-100" : "opacity-0")} />
-                      <span>{item.label}</span>
-                    </CommandItem>
-                  ))}
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
-          {containerTypeError ? <p className="text-xs text-red-500 dark:text-red-400">{containerTypeError}</p> : null}
-          {vehicleDetailError ? <p className="text-xs text-red-500 dark:text-red-400">{vehicleDetailError}</p> : null}
-        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-5">
+          {plan ? (
+            <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-3 text-sm dark:border-blue-900/50 dark:bg-blue-950/30">
+              <div className="flex items-center justify-between gap-2">
+                <Link href={`/shipping/plan/${plan.newId}`} className="font-semibold text-blue-700 hover:underline dark:text-blue-300">
+                  {plan.planNo}
+                </Link>
+                <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-slate-900 dark:text-slate-300">{plan.status}</span>
+              </div>
+              <div className="mt-1 text-slate-600 dark:text-slate-300">
+                {plan.originName} → {plan.destinationName}
+              </div>
+              {planLocked ? <div className="mt-1 text-xs font-medium text-amber-700">Plan {plan.status.toLowerCase()} — tampilan saja, tidak bisa diubah.</div> : null}
+            </div>
+          ) : null}
 
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">Add Products</h2>
-            <span className="text-xs font-medium text-slate-400 dark:text-slate-500">{products.length} products</span>
-          </div>
-          <Popover open={openProductSelect} onOpenChange={setOpenProductSelect}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                role="combobox"
-                aria-expanded={openProductSelect}
-                disabled={isLoadingProducts || products.length === 0}
-                className="w-full justify-between rounded-lg border-slate-200 bg-white shadow-sm hover:bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-900"
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <Search className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
-                  <span className="truncate text-sm font-normal text-slate-700 dark:text-slate-300">
-                    {isLoadingProducts ? "Loading products..." : "Search by name or code..."}
+          {/* vehicle */}
+          <section className="space-y-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Kendaraan</h2>
+            <Popover open={openVehicle} onOpenChange={setOpenVehicle}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={openVehicle}
+                  disabled={isLoadingVehicles || vehicles.length === 0 || planLocked}
+                  className="h-auto w-full justify-between rounded-xl border-slate-200 bg-white px-3 py-2.5 text-left shadow-sm hover:bg-white dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-900"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800">
+                      <Truck className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+                        {isLoadingVehicles ? "Memuat kendaraan..." : selectedVehicleLabel || "Pilih kendaraan"}
+                      </span>
+                      {selectedVehicleId ? (
+                        <span className="block truncate text-xs font-normal text-slate-500">
+                          {isLoadingVehicle ? "Memuat..." : `${fmtCm(vehicle.length)} × ${fmtCm(vehicle.width)} × ${fmtCm(vehicle.height)} cm`}
+                          {vehicle.maxPayload ? ` · ${vehicle.maxPayload} kg` : ""}
+                        </span>
+                      ) : null}
+                    </span>
                   </span>
-                </span>
-                <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-              <Command>
-                <CommandInput placeholder="Search product..." />
-                <CommandList>
-                  <CommandEmpty>No product found.</CommandEmpty>
-                  {products.map((item) => (
-                    <CommandItem
-                      key={item.value}
-                      value={`${item.label} ${item.value}`}
-                      className="justify-between gap-3"
-                    >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="truncate">{item.label}</span>
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-7 px-2 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          handleAddProduct(item);
-                          setOpenProductSelect(false);
+                  <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Cari kendaraan..." />
+                  <CommandList>
+                    <CommandEmpty>Kendaraan tidak ditemukan.</CommandEmpty>
+                    {vehicles.map((item) => (
+                      <CommandItem
+                        key={item.value}
+                        value={`${item.label} ${item.value}`}
+                        onSelect={() => {
+                          setSelectedVehicleId(item.value);
+                          setOpenVehicle(false);
                         }}
                       >
-                        <Plus className="h-3 w-3" />
-                        <span>Add</span>
-                      </Button>
-                    </CommandItem>
-                  ))}
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
-          {productError ? <p className="text-xs text-red-500 dark:text-red-400">{productError}</p> : null}
-        </div>
+                        <Check className={cn("mr-2 h-4 w-4", selectedVehicleId === item.value ? "opacity-100" : "opacity-0")} />
+                        <span>{item.label}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            {vehicleError ? <p className="text-xs text-red-500">{vehicleError}</p> : null}
+          </section>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400">Selected Items</h2>
-            <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">({totalSelectedCount})</span>
-          </div>
-          <div className="max-h-[336px] space-y-3 overflow-y-auto pr-1">
-            {selectedItems.length > 0 ? (
-              selectedItems.map((item) => (
-                <ItemCard
-                  key={item.id}
-                  name={item.label}
-                  code={getProductCode(item.label)}
-                  color={item.color}
-                  count={item.count}
-                  onCountChange={(value) => handleCountChange(item.id, value)}
-                  onDecrease={() => handleDecreaseProduct(item.id)}
-                  onIncrease={() => handleIncreaseProduct(item.id)}
-                  onRemove={() => handleRemoveProduct(item.id)}
-                />
-              ))
+          {/* add product */}
+          <section className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tambah produk</h2>
+              <span className="text-xs text-slate-400">{products.length} produk</span>
+            </div>
+            <Popover open={openProduct} onOpenChange={setOpenProduct}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={openProduct}
+                  disabled={isLoadingProducts || products.length === 0 || planLocked}
+                  className="w-full justify-between rounded-xl border-slate-200 bg-white shadow-sm hover:bg-white dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-900"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <Search className="h-4 w-4 shrink-0 text-slate-400" />
+                    <span className="truncate text-sm font-normal text-slate-600 dark:text-slate-300">
+                      {isLoadingProducts ? "Memuat produk..." : "Cari nama atau kode..."}
+                    </span>
+                  </span>
+                  <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Cari produk..." />
+                  <CommandList className="max-h-72">
+                    <CommandEmpty>Produk tidak ditemukan.</CommandEmpty>
+                    {products.map((item) => (
+                      <CommandItem key={item.newId} value={`${item.name} ${item.itemCode}`} className="justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm">{item.name}</div>
+                          <div className="truncate text-xs text-slate-500">
+                            {item.itemCode} · {item.length}×{item.width}×{item.height} cm · {item.weight} kg
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 shrink-0 px-2 text-xs"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            handleAddProduct(item);
+                            setOpenProduct(false);
+                          }}
+                        >
+                          <Plus className="h-3 w-3" />
+                          <span>Add</span>
+                        </Button>
+                      </CommandItem>
+                    ))}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            {productError ? <p className="text-xs text-red-500">{productError}</p> : null}
+          </section>
+
+          {/* selected items */}
+          <section className="flex min-h-0 flex-1 flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Muatan</h2>
+              <div className="flex items-center gap-3 text-xs text-slate-400">
+                <span>{totalUnits} unit</span>
+                {selectedItems.length > 0 && !planLocked ? (
+                  <button type="button" className="inline-flex items-center gap-1 hover:text-red-500" onClick={() => setSelectedItems([])}>
+                    <Trash2 className="h-3 w-3" /> Kosongkan
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            {selectedItems.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-400 dark:border-slate-700 dark:bg-slate-900">
+                Belum ada produk. Tambahkan produk untuk melihat susunannya di truk.
+              </div>
             ) : (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-500">
-                Belum ada product yang dipilih.
+              <div className="space-y-2">
+                {selectedItems.map((item) => {
+                  const spec = specs[item.value];
+                  const unplacedOfItem = layout.unplaced.filter((box) => box.productKey === item.id).length;
+                  return (
+                    <div
+                      key={item.id}
+                      onMouseEnter={() => setHoverItem(item.id)}
+                      onMouseLeave={() => setHoverItem(null)}
+                      className={cn(
+                        "rounded-xl border bg-white p-3 shadow-sm transition-colors dark:bg-slate-900",
+                        hoverItem === item.id ? "border-blue-300 dark:border-blue-500/60" : "border-slate-200 dark:border-slate-700",
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className={cn("mt-0.5 h-8 w-8 shrink-0 rounded-md shadow-inner", item.color)} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{item.label}</div>
+                          <div className="truncate text-xs text-slate-500">
+                            {spec ? (
+                              <>
+                                {spec.code} · {fmtCm(spec.l)}×{fmtCm(spec.w)}×{fmtCm(spec.h)} cm · {spec.weightKg} kg
+                                {!spec.hasDimensions ? " (ukuran default)" : ""}
+                              </>
+                            ) : (
+                              "Memuat ukuran..."
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-slate-300 hover:text-red-500"
+                          onClick={() => setSelectedItems((items) => items.filter((it) => it.id !== item.id))}
+                          disabled={planLocked}
+                          aria-label="Hapus"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between">
+                        <div className="flex items-center gap-1 rounded-lg border border-slate-100 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={planLocked} onClick={() => setItemCount(item.id, Math.max(0, parseCount(item.count) - 1))}>
+                            <Minus className="h-3 w-3" />
+                          </Button>
+                          <input
+                            value={item.count}
+                            disabled={planLocked}
+                            onChange={(event) => setItemCount(item.id, parseCount(sanitizeCountInput(event.target.value)))}
+                            inputMode="numeric"
+                            className="h-7 w-14 rounded-md border-0 bg-transparent px-1 text-center text-xs font-bold text-slate-700 outline-none dark:text-slate-100"
+                          />
+                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={planLocked} onClick={() => setItemCount(item.id, parseCount(item.count) + 1)}>
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <div className="text-right text-xs text-slate-500">
+                          {spec ? fmtKg(spec.weightKg * parseCount(item.count)) : ""}
+                          {unplacedOfItem > 0 ? <div className="font-semibold text-red-500">{unplacedOfItem} tidak muat</div> : null}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
-          </div>
+          </section>
         </div>
 
-        <div className="mt-auto">
-          <Button variant="default" className="w-full">
-            <LayoutPanelTop className="h-4 w-4" />
-            <span>Generate Layout</span>
-          </Button>
+        <div className="border-t border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+          {planId ? (
+            <Button className="w-full" onClick={() => void handleSavePlanLoad()} disabled={isSavingPlan || planLocked}>
+              {isSavingPlan ? "Menyimpan..." : "Simpan ke Shipping Plan"}
+            </Button>
+          ) : (
+            <Button className="w-full" variant="outline" onClick={handleSaveDraft}>
+              Simpan di browser
+            </Button>
+          )}
         </div>
       </aside>
 
@@ -760,358 +692,146 @@ function ShippingSimulation() {
         type="button"
         variant="outline"
         size="icon"
-        onClick={() => setIsSidebarOpen((current) => !current)}
-        aria-label={isSidebarOpen ? "Hide panel" : "Show panel"}
-        aria-pressed={isSidebarOpen}
+        onClick={() => setIsPanelOpen((open) => !open)}
+        aria-label={isPanelOpen ? "Sembunyikan panel" : "Tampilkan panel"}
         className={cn(
-          "absolute left-0 top-6 z-20 h-10 w-10 rounded-full border-slate-200 bg-white shadow-md transition-all duration-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100",
-          isSidebarOpen ? "translate-x-[380px]" : "translate-x-4",
+          "absolute top-4 z-20 h-9 w-9 rounded-full border-slate-200 bg-white shadow-md transition-all duration-300 dark:border-slate-700 dark:bg-slate-900",
+          isPanelOpen ? "left-[362px]" : "left-3",
         )}
       >
-        {isSidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+        {isPanelOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
       </Button>
 
+      {/* ---------------- 3D area ---------------- */}
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex items-start justify-between gap-3 border-b border-slate-200 px-6 py-2 dark:border-slate-800 dark:bg-slate-950">
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-[1rem] font-semibold tracking-tight text-slate-800 dark:text-slate-100 sm:text-[1.15rem]">Truck Container View</h1>
-            <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-slate-400 sm:text-sm">
-              {isLoadingVehicleDetail ? "Loading dimensions..." : formatDimensionsLabel(vehicleDimensions)}
-            </p>
-            {plan ? (
-              <p className="mt-0.5 truncate text-xs font-medium text-slate-500 dark:text-slate-400 sm:text-sm">
-                <Link href={`/shipping/plan/${plan.newId}`} className="font-semibold text-blue-600 hover:underline">
-                  {plan.planNo}
-                </Link>{" "}
-                · {plan.originName} → {plan.destinationName}
-                {planLocked ? ` · ${plan.status} (read only)` : ""}
-              </p>
-            ) : null}
-            {selectedItems.length > 0 ? (
-              <p className={cn("mt-0.5 text-xs font-medium sm:text-sm", isOverweight ? "text-red-600" : "text-slate-500 dark:text-slate-400")}>
-                Weight {+totalWeightKg.toFixed(2)} kg{vehicleMaxPayload !== null ? ` / ${vehicleMaxPayload} kg max payload` : ""}
-                {isOverweight ? " — over payload!" : ""}
-              </p>
-            ) : null}
-          </div>
-          <div className="flex shrink-0 items-center gap-3">
-            <div className="flex gap-2 rounded-full bg-slate-800 px-3 py-2 shadow-lg">
-              <div
-                className={cn(
-                  "h-3.5 w-3.5 rounded-full transition-all duration-300",
-                  capacitySignal === "red"
-                    ? "bg-[#ff3b30] ring-2 ring-red-300/80 shadow-[0_0_14px_rgba(255,110,103,1),0_0_30px_rgba(255,59,48,1),0_0_48px_rgba(185,28,28,1)]"
-                    : "bg-[#3b0a0a]",
-                )}
+        <div className="relative min-h-0 flex-1">
+          <Canvas shadows dpr={[1, 2]} camera={{ position: [-8, 5, 9], fov: 36 }} gl={{ antialias: true }} className="h-full w-full">
+            <Suspense fallback={null}>
+              <TruckScene
+                spec={{ length: vehicle.length, width: vehicle.width, height: vehicle.height, type: `${vehicle.type} ${vehicle.name}`, climate: vehicle.climate }}
+                boxes={layout.placed}
+                zoom={zoom}
+                preset={view}
+                highlightKey={hoverItem}
               />
-              <div
-                className={cn(
-                  "h-3.5 w-3.5 rounded-full transition-all duration-300",
-                  capacitySignal === "yellow"
-                    ? "bg-yellow-200 ring-2 ring-yellow-100/60 shadow-[0_0_12px_rgba(254,240,138,1),0_0_28px_rgba(253,224,71,0.95),0_0_42px_rgba(250,204,21,0.78)]"
-                    : "bg-yellow-400/30",
-                )}
-              />
-              <div
-                className={cn(
-                  "h-3.5 w-3.5 rounded-full transition-all duration-300",
-                  capacitySignal === "green"
-                    ? "bg-green-300 ring-2 ring-green-200/60 shadow-[0_0_12px_rgba(134,239,172,1),0_0_28px_rgba(74,222,128,0.95),0_0_42px_rgba(34,197,94,0.78)]"
-                    : "bg-green-500/30",
-                )}
-              />
-            </div>
-            <div className="h-9 w-px bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
-            <div className="text-right">
-              <div className="text-[1.1rem] leading-none font-semibold tracking-tight text-blue-600 sm:text-[1.35rem]">{cargoLayout.utilizationPct.toFixed(1)}%</div>
-              <div className="mt-1 text-[10px] font-medium text-slate-500 dark:text-slate-400 sm:text-[14px]">Slot Capacity Used</div>
-            </div>
-          </div>
-        </header>
+            </Suspense>
+          </Canvas>
 
-        <div className="flex flex-1 min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(125,211,252,0.20),_transparent_45%),linear-gradient(180deg,_#f8fbff_0%,_#eef4f8_100%)] dark:bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.10),_transparent_35%),linear-gradient(180deg,_#0f172a_0%,_#111827_100%)]">
-          <div className="relative min-w-0 flex-1 min-h-0">
-            <div className="h-full min-h-[560px] w-full overflow-hidden border-y border-slate-200/80 bg-white/40 shadow-[0_18px_45px_rgba(15,23,42,0.08)] backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/40">
-              <Canvas
-                shadows
-                camera={{ position: [8.2, 4.8, 8.2], fov: 38 }}
-                className="h-full w-full"
-              >
-                <Suspense fallback={null}>
-                  <color attach="background" args={["#eef5ff"]} />
-                  <fog attach="fog" args={["#eef5ff", 20, 42]} />
-                  <ambientLight intensity={1.1} />
-                  <directionalLight position={[8, 12, 6]} intensity={1.4} castShadow shadow-mapSize-width={2048} shadow-mapSize-height={2048} />
-                  <directionalLight position={[-4, 6, -8]} intensity={0.45} color="#dbeafe" />
-                  <TruckScene dimensions={vehicleDimensions} cargoLayout={cargoLayout} zoom={zoom} cameraPreset={cameraPreset} />
-                  <OrbitControls enablePan enableRotate enableZoom minDistance={4} maxDistance={20} maxPolarAngle={Math.PI / 2.08} />
-                  <ContactShadows position={[0, -0.12, 0]} opacity={0.22} scale={22} blur={3.4} far={10} color="#94a3b8" />
-                </Suspense>
-              </Canvas>
-            </div>
-
-            <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2 rounded-2xl border border-slate-200/90 bg-white/92 p-2 shadow-lg backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/92 sm:left-6">
-              <Button
-                type="button"
-                variant={cameraPreset === "top" ? "default" : "outline"}
-                className="h-8 rounded-lg px-3 text-xs font-semibold"
-                onClick={() => setCameraPreset("top")}
-              >
-                Top
-              </Button>
-              <Button
-                type="button"
-                variant={cameraPreset === "side" ? "default" : "outline"}
-                className="h-8 rounded-lg px-3 text-xs font-semibold"
-                onClick={() => setCameraPreset("side")}
-              >
-                Side
-              </Button>
-              <Button
-                type="button"
-                variant={cameraPreset === "rear" ? "default" : "outline"}
-                className="h-8 rounded-lg px-3 text-xs font-semibold"
-                onClick={() => setCameraPreset("rear")}
-              >
-                Rear
-              </Button>
-            </div>
-
-            <div className="absolute bottom-4 right-4 z-10 flex items-center gap-2 sm:right-6">
-              <div className="flex h-11 items-center rounded-xl border border-slate-200/90 bg-white/92 px-1.5 shadow-lg backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/92">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-                  onClick={handleZoomOut}
-                >
-                  <ZoomOut className="h-3.5 w-3.5" />
-                </Button>
-                <div className="min-w-16 px-2 text-center text-sm font-semibold text-slate-700 dark:text-slate-200">{Math.round(zoom * 100)}%</div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-                  onClick={handleZoomIn}
-                >
-                  <ZoomIn className="h-3.5 w-3.5" />
-                </Button>
+          {/* title + summary */}
+          <div className="pointer-events-none absolute left-14 top-4 flex w-[270px] flex-col gap-3">
+            <div className="pointer-events-auto rounded-2xl border border-white/70 bg-white/85 p-4 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/85">
+              <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">Load Simulation</div>
+              <div className="truncate text-xs text-slate-500">
+                {vehicle.name || "Pilih kendaraan"}
+                {vehicle.type ? ` · ${vehicle.type}` : ""}
+                {vehicle.climate ? ` · ${vehicle.climate}` : ""}
               </div>
 
-              <Button
-                variant="outline"
-                className="h-11 rounded-xl border-slate-200/90 bg-white/92 px-4 text-sm font-semibold text-slate-700 shadow-lg backdrop-blur-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900/92 dark:text-slate-200 dark:hover:bg-slate-800"
-                onClick={planId ? () => void handleSavePlanLoad() : handleSaveData}
-                disabled={isSavingPlan || planLocked}
-              >
-                <Box className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                <span>{planId ? (isSavingPlan ? "Saving..." : "Save to Plan") : "Save Data"}</span>
-              </Button>
+              <div className="mt-3 space-y-3">
+                <div>
+                  <div className="mb-1 flex items-baseline justify-between text-xs">
+                    <span className="font-medium text-slate-500">Volume terpakai</span>
+                    <span className="text-base font-semibold text-slate-800 dark:text-slate-100">{layout.volumePct.toFixed(1)}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                    <div className={cn("h-full rounded-full transition-all duration-500", volumeTone)} style={{ width: `${layout.volumePct}%` }} />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-1 flex items-baseline justify-between text-xs">
+                    <span className="font-medium text-slate-500">Berat</span>
+                    <span className={cn("font-semibold", isOverweight ? "text-red-600" : "text-slate-700 dark:text-slate-200")}>
+                      {fmtKg(totalWeightKg)}
+                      {vehicle.maxPayload ? ` / ${vehicle.maxPayload} kg` : ""}
+                    </span>
+                  </div>
+                  {vehicle.maxPayload ? (
+                    <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                      <div
+                        className={cn("h-full rounded-full transition-all duration-500", isOverweight ? "bg-red-500" : "bg-sky-500")}
+                        style={{ width: `${Math.min((totalWeightKg / vehicle.maxPayload) * 100, 100)}%` }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-slate-400">Max payload kendaraan belum diisi.</div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="rounded-lg bg-slate-50 py-2 dark:bg-slate-800">
+                    <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{layout.placed.length}</div>
+                    <div className="text-slate-500">Termuat</div>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 py-2 dark:bg-slate-800">
+                    <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{layout.floorPct.toFixed(0)}%</div>
+                    <div className="text-slate-500">Lantai</div>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 py-2 dark:bg-slate-800">
+                    <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{layout.loadHeight.toFixed(2)} m</div>
+                    <div className="text-slate-500">Tinggi</div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="hidden absolute left-6 top-4 z-10 border border-slate-200 bg-white/88 p-4 text-[11px] leading-relaxed text-slate-500 shadow-sm backdrop-blur-sm">
-            <p className="mb-1 font-bold text-slate-700">Items: {totalSelectedCount}</p>
-            <p>Visible in scene: {cargoLayout.visibleUnits}</p>
-            <p>Hidden overflow: {cargoLayout.hiddenUnits}</p>
-            <p>
-              Truck bed: {formatMeters(vehicleDimensions.length)} x {formatMeters(vehicleDimensions.width)} x {formatMeters(vehicleDimensions.height)}
-            </p>
-            <ul className="mt-2 space-y-0.5">
-              <li>• Left Click: Rotate</li>
-              <li>• Right Click: Pan</li>
-              <li>• Scroll: Zoom</li>
-            </ul>
+            {notLoaded > 0 ? (
+              <div className="pointer-events-auto flex items-start gap-2 rounded-xl border border-red-200 bg-red-50/95 p-3 text-xs text-red-700 shadow">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  {notLoaded} unit tidak muat di kendaraan ini ({totalUnits} diminta, {layout.placed.length} termuat). Kurangi jumlah atau pilih kendaraan yang lebih besar.
+                </span>
+              </div>
+            ) : null}
+            {isOverweight ? (
+              <div className="pointer-events-auto flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/95 p-3 text-xs text-amber-800 shadow">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  Berat {fmtKg(totalWeightKg)} melebihi max payload {vehicle.maxPayload} kg
+                  {notLoaded > 0 ? ` (termuat ${fmtKg(loadedWeightKg)})` : ""}.
+                </span>
+              </div>
+            ) : null}
+            {missingDimensions.length > 0 ? (
+              <div className="pointer-events-auto rounded-xl border border-slate-200 bg-white/90 p-3 text-xs text-slate-600 shadow">
+                Ukuran {missingDimensions.map((item) => item.label).join(", ")} belum diisi di master Cubstool, dipakai ukuran default 40×30×25 cm.
+              </div>
+            ) : null}
+          </div>
+
+          {/* view + zoom */}
+          <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3">
+            <div className="flex rounded-full border border-white/70 bg-white/90 p-1 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
+              {VIEWS.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setView(option.key)}
+                  className={cn(
+                    "rounded-full px-4 py-1.5 text-xs font-semibold transition-colors",
+                    view === option.key ? "bg-blue-600 text-white shadow" : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1 rounded-full border border-white/70 bg-white/90 p-1 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setZoom((z) => Math.max(0.7, +(z - 0.1).toFixed(2)))} aria-label="Zoom out">
+                <ZoomOut className="h-4 w-4" />
+              </Button>
+              <span className="w-10 text-center text-xs font-semibold text-slate-600 dark:text-slate-300">{Math.round(zoom * 100)}%</span>
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setZoom((z) => Math.min(2, +(z + 0.1).toFixed(2)))} aria-label="Zoom in">
+                <ZoomIn className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="pointer-events-none absolute right-4 top-4 hidden rounded-lg bg-white/70 px-3 py-2 text-[11px] leading-relaxed text-slate-500 backdrop-blur lg:block">
+            Klik kiri: putar · Klik kanan: geser · Scroll: zoom
           </div>
         </div>
-      </div>
       </main>
-    </div>
-  );
-}
-
-function TruckScene({
-  dimensions,
-  cargoLayout,
-  zoom,
-  cameraPreset,
-}: {
-  dimensions: VehicleDimensions;
-  cargoLayout: CargoLayout;
-  zoom: number;
-  cameraPreset: CameraPreset;
-}) {
-  const cabLength = clamp(dimensions.length * 0.26, 1.35, 2.2);
-  const wheelRadius = clamp(dimensions.width * 0.16, 0.28, 0.48);
-  const wheelThickness = clamp(dimensions.width * 0.16, 0.18, 0.34);
-  const bedWallThickness = 0.06;
-  const baseY = wheelRadius + 0.18;
-  const overallLength = dimensions.length + cabLength + 0.45;
-
-  return (
-    <>
-      <ResponsiveCamera dimensions={dimensions} zoom={zoom} cameraPreset={cameraPreset} />
-      <gridHelper args={[28, 28, "#cbd5e1", "#e2e8f0"]} position={[0, -0.08, 0]} />
-
-      <group position={[0, 0, 0]}>
-        <mesh position={[0, wheelRadius + 0.08, 0]} castShadow receiveShadow>
-          <boxGeometry args={[overallLength, 0.22, dimensions.width * 0.72]} />
-          <meshStandardMaterial color="#334155" metalness={0.45} roughness={0.45} />
-        </mesh>
-
-        <mesh position={[0.15, baseY + 0.02, 0]} castShadow receiveShadow>
-          <boxGeometry args={[dimensions.length, 0.12, dimensions.width]} />
-          <meshStandardMaterial color="#1e293b" metalness={0.25} roughness={0.55} />
-        </mesh>
-
-        <mesh position={[0.15, baseY + 0.025 + bedWallThickness / 2, 0]} receiveShadow>
-          <boxGeometry args={[dimensions.length, bedWallThickness, dimensions.width]} />
-          <meshStandardMaterial color="#94a3b8" metalness={0.08} roughness={0.95} />
-        </mesh>
-
-        <mesh position={[0.15, baseY + dimensions.height / 2, dimensions.width / 2 - bedWallThickness / 2]} receiveShadow renderOrder={2}>
-          <boxGeometry args={[dimensions.length, dimensions.height, bedWallThickness]} />
-          <meshStandardMaterial color="#cbd5e1" transparent opacity={0.55} depthWrite={false} metalness={0.08} roughness={0.4} />
-        </mesh>
-        <mesh position={[0.15, baseY + dimensions.height / 2, -dimensions.width / 2 + bedWallThickness / 2]} receiveShadow renderOrder={2}>
-          <boxGeometry args={[dimensions.length, dimensions.height, bedWallThickness]} />
-          <meshStandardMaterial color="#cbd5e1" transparent opacity={0.55} depthWrite={false} metalness={0.08} roughness={0.4} />
-        </mesh>
-        <mesh position={[dimensions.length / 2 - bedWallThickness / 2 + 0.15, baseY + dimensions.height / 2, 0]} receiveShadow renderOrder={2}>
-          <boxGeometry args={[bedWallThickness, dimensions.height, dimensions.width]} />
-          <meshStandardMaterial color="#cbd5e1" transparent opacity={0.62} depthWrite={false} metalness={0.08} roughness={0.4} />
-        </mesh>
-        <mesh position={[-dimensions.length / 2 + bedWallThickness / 2 + 0.15, baseY + dimensions.height / 2, 0]} receiveShadow renderOrder={2}>
-          <boxGeometry args={[bedWallThickness, dimensions.height, dimensions.width]} />
-          <meshStandardMaterial color="#cbd5e1" transparent opacity={0.38} depthWrite={false} metalness={0.08} roughness={0.4} />
-        </mesh>
-
-        <mesh position={[-dimensions.length / 2 - cabLength / 2 + 0.15, wheelRadius + 0.72, 0]} castShadow receiveShadow>
-          <boxGeometry args={[cabLength, 1.45, dimensions.width * 0.88]} />
-          <meshStandardMaterial color="#0f766e" metalness={0.25} roughness={0.38} />
-        </mesh>
-        <mesh position={[-dimensions.length / 2 - cabLength / 2 - 0.14, wheelRadius + 0.65, 0]} castShadow>
-          <boxGeometry args={[cabLength * 0.38, 1.05, dimensions.width * 0.78]} />
-          <meshStandardMaterial color="#14b8a6" metalness={0.12} roughness={0.36} />
-        </mesh>
-        <mesh position={[-dimensions.length / 2 - cabLength / 2 + 0.02, wheelRadius + 0.93, 0]} renderOrder={2}>
-          <boxGeometry args={[cabLength * 0.5, 0.64, dimensions.width * 0.8]} />
-          <meshStandardMaterial color="#bfdbfe" transparent opacity={0.42} depthWrite={false} metalness={0.1} roughness={0.1} />
-        </mesh>
-
-        {cargoLayout.blocks.map((block) => (
-          <mesh
-            key={block.id}
-            position={[block.position[0] + 0.15, block.position[1] + baseY + 0.08, block.position[2]]}
-            castShadow
-            receiveShadow
-          >
-            <boxGeometry args={block.size} />
-            <meshStandardMaterial color={block.color} metalness={0.12} roughness={0.65} />
-            <Edges threshold={15} color="#0f172a" />
-          </mesh>
-        ))}
-
-        {[
-          [-dimensions.length / 2 - cabLength * 0.55, wheelRadius, dimensions.width / 2 - wheelThickness / 2],
-          [-dimensions.length / 2 - cabLength * 0.55, wheelRadius, -dimensions.width / 2 + wheelThickness / 2],
-          [-dimensions.length / 5, wheelRadius, dimensions.width / 2 - wheelThickness / 2],
-          [-dimensions.length / 5, wheelRadius, -dimensions.width / 2 + wheelThickness / 2],
-          [dimensions.length / 2 - 0.55, wheelRadius, dimensions.width / 2 - wheelThickness / 2],
-          [dimensions.length / 2 - 0.55, wheelRadius, -dimensions.width / 2 + wheelThickness / 2],
-        ].map((wheelPosition, index) => (
-          <group key={`wheel-${index}`} position={wheelPosition as [number, number, number]} rotation={[Math.PI / 2, 0, 0]}>
-            <mesh castShadow receiveShadow>
-              <cylinderGeometry args={[wheelRadius, wheelRadius, wheelThickness, 28]} />
-              <meshStandardMaterial color="#0f172a" roughness={0.95} />
-            </mesh>
-            <mesh castShadow>
-              <cylinderGeometry args={[wheelRadius * 0.42, wheelRadius * 0.42, wheelThickness + 0.02, 20]} />
-              <meshStandardMaterial color="#94a3b8" metalness={0.5} roughness={0.35} />
-            </mesh>
-          </group>
-        ))}
-      </group>
-    </>
-  );
-}
-
-function ResponsiveCamera({
-  dimensions,
-  zoom,
-  cameraPreset,
-}: {
-  dimensions: VehicleDimensions;
-  zoom: number;
-  cameraPreset: CameraPreset;
-}) {
-  const { camera } = useThree();
-
-  useEffect(() => {
-    const span = Math.max(dimensions.length + 2.2, dimensions.width * 4.2, dimensions.height * 4);
-    const distance = clamp(span / zoom, 4.8, 18.5);
-    const targetY = dimensions.height * 0.45;
-
-    if (cameraPreset === "top") {
-      camera.position.set(0, distance * 1.45, 0.01);
-    } else if (cameraPreset === "rear") {
-      camera.position.set(distance * 1.08, distance * 0.36, 0);
-    } else {
-      camera.position.set(0, distance * 0.46, distance * 1.18);
-    }
-
-    camera.lookAt(0, targetY, 0);
-    camera.updateProjectionMatrix();
-  }, [camera, cameraPreset, dimensions.height, dimensions.length, dimensions.width, zoom]);
-
-  return null;
-}
-
-function ItemCard({
-  name,
-  code,
-  color,
-  count,
-  onCountChange,
-  onDecrease,
-  onIncrease,
-  onRemove,
-}: {
-  name: string;
-  code: string;
-  color: string;
-  count: string;
-  onCountChange: (value: string) => void;
-  onDecrease: () => void;
-  onIncrease: () => void;
-  onRemove: () => void;
-}) {
-  return (
-    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-colors hover:border-blue-200 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-blue-500/60">
-      <div className={`h-8 w-8 shrink-0 rounded-md ${color} shadow-inner`} />
-
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-bold text-slate-800 dark:text-slate-100">{name}</div>
-        {code ? <div className="text-xs font-medium uppercase text-slate-400 dark:text-slate-500">{code}</div> : null}
-      </div>
-
-      <div className="flex items-center gap-1 rounded-lg border border-slate-100 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800">
-        <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-500 hover:bg-white hover:text-blue-600 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-blue-400" onClick={onDecrease}>
-          <Minus className="h-3 w-3" />
-        </Button>
-        <input
-          value={count}
-          onChange={(event) => onCountChange(event.target.value)}
-          inputMode="decimal"
-          className="h-7 w-10 rounded-md border-0 bg-transparent px-1 text-center text-xs font-bold text-slate-700 outline-none dark:text-slate-100"
-        />
-        <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-500 hover:bg-white hover:text-blue-600 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-blue-400" onClick={onIncrease}>
-          <Plus className="h-3 w-3" />
-        </Button>
-      </div>
-
-      <Button variant="ghost" size="icon" className="text-slate-300 transition-colors hover:text-red-500 dark:text-slate-600 dark:hover:text-red-400" onClick={onRemove}>
-        <Trash2 className="h-4 w-4" />
-      </Button>
     </div>
   );
 }

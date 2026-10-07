@@ -165,7 +165,7 @@ export default function ShippingPlanDetailPage() {
           <>
             <div className="grid gap-6 rounded-lg border p-5 sm:grid-cols-2 lg:grid-cols-4">
               <Field label="Vehicle">{plan.vehicleName || "-"}</Field>
-              <Field label="Slot capacity used">{plan.utilizationPct ? `${plan.utilizationPct}%` : "-"}</Field>
+              <Field label="Volume used">{plan.utilizationPct ? `${plan.utilizationPct}%` : "-"}</Field>
               <Field label="Total units">{plan.totalUnits}</Field>
               <Field label="Total weight">
                 <span className={cn(overweight && "font-semibold text-destructive")}>

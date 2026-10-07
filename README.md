@@ -32,7 +32,7 @@ Setiap perpindahan status dicatat di riwayat plan lengkap dengan siapa dan kapan
 
 ## Stack
 
-Next.js 16 (App Router) dengan React 19 dan TypeScript, Tailwind CSS 4, komponen UI berbasis shadcn/Radix. Simulasi muatan memakai three.js lewat react-three-fiber. Database PostgreSQL, diakses dengan `pg` tanpa ORM. Package manager pnpm, Node 22.
+Next.js 16 (App Router) dengan React 19 dan TypeScript, Tailwind CSS 4, komponen UI berbasis shadcn/Radix. Simulasi muatan memakai three.js lewat react-three-fiber, dengan algoritma penataan 3D sendiri. Database PostgreSQL, diakses dengan `pg` tanpa ORM. Package manager pnpm, Node 22.
 
 ## Struktur folder
 
@@ -152,14 +152,25 @@ Kesalahan input dibalas 400, perubahan yang tidak boleh untuk status plan saat i
 
 ## Simulasi muatan
 
-Halaman `shipping/container-load/create` menata barang di dalam bak truk. Aturannya: lantai diisi penuh dulu (melebar, lalu maju ke belakang) sebelum lapisan kedua dimulai, dan blok dirapatkan tanpa celah. Ukuran satu blok dihitung dari dimensi bak lalu diregangkan supaya pas memenuhi ruangnya.
+Halaman `shipping/container-load/create` menata barang di dalam bak truk dengan ukuran aslinya. Dimensi tiap karton diambil dari master Cubstool (cm), dimensi bak dari master Vehicle (m). Karton yang belum punya dimensi memakai ukuran default 40 x 30 x 25 cm dan diberi tanda di layar.
 
-Kalau dibuka dengan `?planId=...`, hasilnya bisa disimpan ke plan lewat tombol Save to Plan. Tanpa `planId`, halaman tetap bisa dipakai sendiri dan hasilnya hanya tersimpan di browser.
+Aturan penataannya ada di `lib/cargo-packing.ts`, terpisah dari tampilan supaya bisa diuji sendiri:
 
-Ada dua catatan soal hitungannya:
+- Karton boleh diputar 90 derajat di lantai, tapi tidak digulingkan.
+- Setiap karton ditaruh di posisi terendah yang tersedia, lalu yang paling dekat kabin, lalu melebar ke samping. Akibatnya lantai pasti terisi dulu sampai tidak ada karton yang muat lagi, baru lapisan berikutnya dimulai, dan muatan terbentuk seperti dinding dari kabin ke belakang.
+- Karton yang ditumpuk harus punya minimal 75% alasnya tertopang karton di bawahnya, jadi tidak ada yang menggantung.
+- Karton dengan alas besar dan lebih berat didahulukan, sehingga cenderung berada di bawah.
+- Beberapa urutan penataan dicoba dan hasil yang memuat paling banyak (lalu paling pendek) dipakai.
 
-- Ukuran barang di tampilan belum diambil dari dimensi Cubstool. Semua barang digambar sama besar, jadi persentase "slot terpakai" itu hitungan slot, bukan volume asli.
-- Berat dihitung dari kolom `weight` Cubstool dan dianggap dalam kilogram. Pengecekan berat hanya jalan kalau kendaraan sudah diisi Max Payload di Master Vehicle.
+Dengan ukuran yang berbeda-beda, celah kecil di lantai tidak bisa dihindari sepenuhnya. Yang dijamin: tidak ada tumpang tindih, tidak ada yang keluar bak, dan tidak ada karton tanpa tumpuan.
+
+Persentase yang ditampilkan adalah volume terpakai (volume semua karton dibanding ruang dalam bak), bukan lagi hitungan slot. Angka itu juga yang disimpan ke plan. Tampilan "Lantai" menunjukkan berapa persen lantai tertutup. Kalau jumlah yang diminta melebihi yang muat, sisanya ditandai "tidak muat" dan plan tidak bisa disimpan sampai jumlahnya dikurangi.
+
+Kendaraan digambar dari jenisnya: pickup dengan kap mesin, truk box (CDE, CDD, Fuso) dengan kabin datar, serta tronton dan trailer dengan dua gandar belakang. Kendaraan dengan climate AC mendapat unit pendingin di atap. Dari panel kiri, mengarahkan kursor ke sebuah produk menyorot semua kartonnya di truk.
+
+Kalau dibuka dengan `?planId=...`, hasilnya bisa disimpan ke plan lewat tombol "Simpan ke Shipping Plan". Tanpa `planId`, halaman tetap bisa dipakai sendiri dan hasilnya hanya tersimpan di browser.
+
+Berat dihitung dari kolom `weight` Cubstool dan dianggap dalam kilogram. Pengecekan berat hanya jalan kalau kendaraan sudah diisi Max Payload di Master Vehicle. Penataan belum memperhitungkan batas tumpukan per produk atau barang yang tidak boleh ditumpuk.
 
 ## Yang belum selesai
 
