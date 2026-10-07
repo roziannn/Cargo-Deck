@@ -159,8 +159,8 @@ Aturan penataannya ada di `lib/cargo-packing.ts`, terpisah dari tampilan supaya 
 - Karton boleh diputar 90 derajat di lantai, tapi tidak digulingkan.
 - Setiap karton ditaruh di posisi terendah yang tersedia, lalu yang paling dekat kabin, lalu melebar ke samping. Akibatnya lantai pasti terisi dulu sampai tidak ada karton yang muat lagi, baru lapisan berikutnya dimulai, dan muatan terbentuk seperti dinding dari kabin ke belakang.
 - Karton yang ditumpuk harus punya minimal 75% alasnya tertopang karton di bawahnya, jadi tidak ada yang menggantung.
-- Karton dengan alas besar dan lebih berat didahulukan, sehingga cenderung berada di bawah.
-- Beberapa urutan penataan dicoba dan hasil yang memuat paling banyak (lalu paling pendek) dipakai.
+- Karton paling berat didahulukan, jadi yang berat mengisi lantai dan yang lebih ringan berada di atasnya. Kalau urutan ini membuat ada karton yang tidak muat, urutan lain (berdasarkan luas alas dan tinggi) dicoba supaya lebih banyak yang terangkut.
+- Dari beberapa variasi urutan yang dicoba, hasil yang memuat paling banyak (lalu paling pendek) dipakai.
 
 Dengan ukuran yang berbeda-beda, celah kecil di lantai tidak bisa dihindari sepenuhnya. Yang dijamin: tidak ada tumpang tindih, tidak ada yang keluar bak, dan tidak ada karton tanpa tumpuan.
 

@@ -2,8 +2,8 @@
  * 3D cargo packing for the load simulation (all sizes in metres).
  *
  * Boxes keep their real dimensions and may be turned 90 degrees on the floor (never tipped over).
- * Every box goes to the lowest free position first (z), then closest to the cab wall (x), then
- * across the width (y). That makes the floor fill completely before anything is stacked, and builds
+ * Heavier cartons are placed first, and every box goes to the lowest free position first (z), then closest to
+ * the cab wall (x), then across the width (y). That makes the floor fill completely before anything is stacked, and builds
  * the load as walls from the cab backwards. A box on top of others needs most of its footprint
  * supported, so nothing hangs in the air.
  *
@@ -47,12 +47,17 @@ type Strategy = { sort: (a: PackBox, b: PackBox) => number; preferShortSide: boo
 
 const area = (b: PackBox) => b.l * b.w;
 
-// Large footprints first (they make the floor), heavier before lighter, taller before shorter.
+// Heaviest first, so heavy cartons take the floor and lighter ones end up above them. Ties: larger footprint, then taller.
+const BY_WEIGHT: Strategy["sort"] = (a, b) => (b.weight ?? 0) - (a.weight ?? 0) || area(b) - area(a) || b.h - a.h;
+// Fallbacks that ignore weight, used only when the weight-first order cannot fit everything.
 const BY_FOOTPRINT: Strategy["sort"] = (a, b) => area(b) - area(a) || (b.weight ?? 0) - (a.weight ?? 0) || b.h - a.h;
-// Taller first: keeps layers level when heights differ a lot.
 const BY_HEIGHT: Strategy["sort"] = (a, b) => b.h - a.h || area(b) - area(a) || (b.weight ?? 0) - (a.weight ?? 0);
 
-const STRATEGIES: Strategy[] = [
+const PREFERRED: Strategy[] = [
+  { sort: BY_WEIGHT, preferShortSide: true },
+  { sort: BY_WEIGHT, preferShortSide: false },
+];
+const FALLBACK: Strategy[] = [
   { sort: BY_FOOTPRINT, preferShortSide: true },
   { sort: BY_FOOTPRINT, preferShortSide: false },
   { sort: BY_HEIGHT, preferShortSide: true },
@@ -165,25 +170,43 @@ function measure(placed: PlacedBox[], unplaced: PackBox[], bin: PackBin): PackRe
   };
 }
 
+const validSize = (n: number) => Number.isFinite(n) && n > 0;
+
 /** Packs the boxes; several ordering strategies are tried and the one that loads the most (then shortest) wins. */
-export function packCargo(boxes: PackBox[], bin: PackBin): PackResult {
-  if (boxes.length === 0) return measure([], [], bin);
+export function packCargo(input: PackBox[], rawBin: PackBin): PackResult {
+  // Boxes without a usable size can never be placed; keep them out of the maths so no NaN reaches the 3D scene.
+  const bin: PackBin = {
+    length: validSize(rawBin.length) ? rawBin.length : 0.1,
+    width: validSize(rawBin.width) ? rawBin.width : 0.1,
+    height: validSize(rawBin.height) ? rawBin.height : 0.1,
+  };
+  const boxes = input.filter((b) => validSize(b.l) && validSize(b.w) && validSize(b.h));
+  const invalid = input.filter((b) => !(validSize(b.l) && validSize(b.w) && validSize(b.h)));
+  if (boxes.length === 0) return measure([], invalid, bin);
 
-  let best: PackResult | null = null;
-  for (const strategy of STRATEGIES) {
-    const { placed, unplaced } = runStrategy(boxes, bin, strategy);
-    const result = measure(placed, unplaced, bin);
-    if (
-      !best ||
-      result.unplaced.length < best.unplaced.length ||
-      (result.unplaced.length === best.unplaced.length && result.loadLength < best.loadLength - EPS)
-    ) {
-      best = result;
+  const winner: { best: PackResult | null } = { best: null };
+  const consider = (strategies: Strategy[]) => {
+    for (const strategy of strategies) {
+      const { placed, unplaced } = runStrategy(boxes, bin, strategy);
+      const result = measure(placed, unplaced, bin);
+      const current = winner.best;
+      if (
+        !current ||
+        result.unplaced.length < current.unplaced.length ||
+        (result.unplaced.length === current.unplaced.length && result.loadLength < current.loadLength - EPS)
+      ) {
+        winner.best = result;
+      }
+      if (result.unplaced.length === 0 && boxes.length > 400) return; // big loads: first complete layout is good enough
     }
-    if (result.unplaced.length === 0 && boxes.length > 400) break; // big loads: first complete layout is good enough
-  }
+  };
 
-  return best as PackResult;
+  consider(PREFERRED);
+  // Only when the heavy-first order leaves cartons behind do the weight-blind orders get a chance to fit more.
+  if (winner.best && winner.best.unplaced.length > 0) consider(FALLBACK);
+
+  const result = winner.best as PackResult;
+  return invalid.length > 0 ? { ...result, unplaced: [...result.unplaced, ...invalid] } : result;
 }
 
 /** Usable cargo space inside a truck body: the outer bed size minus wall thickness and a hair of clearance. */

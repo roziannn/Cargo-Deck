@@ -451,9 +451,12 @@ function CameraRig({ overall, width, height, zoom, preset }: { overall: number; 
   return null;
 }
 
+const finite = (value: number, fallback: number, min: number, max: number) =>
+  Number.isFinite(value) && value > 0 ? Math.min(Math.max(value, min), max) : fallback;
+
 export function TruckScene({
-  spec,
-  boxes,
+  spec: rawSpec,
+  boxes: rawBoxes,
   zoom,
   preset,
   highlightKey,
@@ -464,6 +467,21 @@ export function TruckScene({
   preset: CameraPreset;
   highlightKey: string | null;
 }) {
+  // Guard the 3D geometry against bad master data: a NaN size would break bounding spheres and culling.
+  const spec = useMemo<TruckSpec>(
+    () => ({
+      length: finite(rawSpec.length, 6, 1, 20),
+      width: finite(rawSpec.width, 2.4, 0.8, 3),
+      height: finite(rawSpec.height, 2.5, 0.8, 4),
+      type: rawSpec.type ?? "",
+      climate: rawSpec.climate ?? "",
+    }),
+    [rawSpec.length, rawSpec.width, rawSpec.height, rawSpec.type, rawSpec.climate],
+  );
+  const boxes = useMemo(
+    () => rawBoxes.filter((b) => [b.x, b.y, b.z, b.l, b.w, b.h].every(Number.isFinite) && b.l > 0 && b.w > 0 && b.h > 0),
+    [rawBoxes],
+  );
   const cls = classify(spec);
   const prof = PROFILES[cls];
   const nose = prof.cabLength + prof.hood + 0.45;
