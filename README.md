@@ -61,19 +61,19 @@ Di sisi server alurnya selalu sama: `route.ts` menerima request, `services` beri
 
 Butuh PostgreSQL 13 atau lebih baru (skrip memakai `gen_random_uuid()` dan `trim_scale()`).
 
-Jalankan skrip SQL berurutan pada database kosong. Semuanya aman diulang.
+Skrip SQL ada di folder `database/` dan harus dijalankan berurutan (001 sampai 007). Semuanya aman diulang. Cara paling mudah adalah lewat perintah migrasi, yang membaca koneksi dari `.env.local` (lihat di bawah) dan menjalankan semua file dalam urutan yang benar:
 
 ```bash
-psql -d nama_database -f database/001_create_core_access_tables.sql
-psql -d nama_database -f database/002_auth_and_seed.sql
-psql -d nama_database -f database/003_master_vehicle_cubstool.sql
-psql -d nama_database -f database/004_shipping_plan.sql
-psql -d nama_database -f database/005_user_management.sql
-psql -d nama_database -f database/006_seed_master_data.sql   # data contoh, opsional
-psql -d nama_database -f database/007_booking_and_delivery_note.sql
+cd logistik-shipping-fe
+pnpm db:migrate         # semua file
+pnpm db:migrate 7       # hanya dari file 007 ke atas
 ```
 
-Lalu buat `logistik-shipping-fe/.env.local`:
+Tiap file dijalankan sebagai satu kesatuan: kalau ada yang gagal, file itu tidak diterapkan sama sekali, dan pesan errornya menyebut nomor barisnya. Perintah ini memakai database yang sama dengan aplikasi, jadi buat `.env.local` dulu.
+
+Kalau lebih suka manual, jalankan dengan `psql -d nama_database -f database/00X_....sql` per file. Menyalin dan menempel ke Query Tool juga bisa, tapi harus seluruh isi file dan tanpa teks yang terseleksi: klien SQL hanya menjalankan bagian yang diblok, dan itu penyebab error seperti `column ... does not exist` karena baris-baris atas yang membuat kolomnya tidak ikut jalan. Skrip 006 hanya data contoh.
+
+Isi `logistik-shipping-fe/.env.local`:
 
 ```
 DB_HOST=localhost
