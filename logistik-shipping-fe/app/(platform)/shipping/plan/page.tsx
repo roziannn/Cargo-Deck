@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Eye, Plus, Search } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
 
@@ -15,10 +16,19 @@ import { formatPlanDate, listShippingPlans, type ShippingPlan, type ShippingPlan
 const STATUS_FILTERS: ("ALL" | ShippingPlanStatus)[] = ["ALL", "DRAFT", "PLANNED", "APPROVED", "BOOKED", "PICKING", "LOADING", "DISPATCHED", "COMPLETED", "CANCELLED"];
 
 export default function ShippingPlanListPage() {
+  return (
+    <Suspense fallback={null}>
+      <ShippingPlanList />
+    </Suspense>
+  );
+}
+
+function ShippingPlanList() {
+  const initialStatus = useSearchParams().get("status");
   const [data, setData] = useState<ShippingPlan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]>("ALL");
+  const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]>(STATUS_FILTERS.includes(initialStatus as ShippingPlanStatus) ? (initialStatus as ShippingPlanStatus) : "ALL");
   const [page, setPage] = useState(1);
   const rowsPerPage = 8;
 
