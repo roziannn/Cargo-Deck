@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
 import { ContactShadows, Edges, OrbitControls } from "@react-three/drei";
@@ -9,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { getStoredAuthToken } from "@/lib/api/auth";
-import { listCubstoolLov, type CubstoolLovItem } from "@/lib/api/mst-cubstool";
+import { listCubstoolLov, listMstCubstools, type CubstoolLovItem } from "@/lib/api/mst-cubstool";
+import { getShippingPlan, saveShippingPlanLoad, type ShippingPlanDetail } from "@/lib/api/shipping-plan";
 import { getMstVehicleById, listVehicleLov, type VehicleLovItem } from "@/lib/api/mst-vehicle";
 import { cn } from "@/lib/utils";
 
@@ -290,7 +293,18 @@ function loadShippingContainerLoadDraft(): ShippingContainerLoadDraft | null {
 }
 
 export default function ShippingPage() {
-  const initialDraft = loadShippingContainerLoadDraft();
+  return (
+    <Suspense fallback={null}>
+      <ShippingSimulation />
+    </Suspense>
+  );
+}
+
+function ShippingSimulation() {
+  const router = useRouter();
+  const planId = useSearchParams().get("planId");
+  // With a plan, the plan itself is the source of truth; the browser draft only applies to standalone use.
+  const initialDraft = planId ? null : loadShippingContainerLoadDraft();
   const [zoom, setZoom] = useState(initialDraft?.zoom ?? 1.2);
   const [cameraPreset, setCameraPreset] = useState<CameraPreset>("side");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -308,6 +322,50 @@ export default function ShippingPage() {
   const [selectedVehicleName, setSelectedVehicleName] = useState("");
   const [isLoadingVehicleDetail, setIsLoadingVehicleDetail] = useState(false);
   const [vehicleDetailError, setVehicleDetailError] = useState<string | null>(null);
+  const [vehicleMaxPayload, setVehicleMaxPayload] = useState<number | null>(null);
+  const [weightByProduct, setWeightByProduct] = useState<Record<string, number>>({});
+  const [plan, setPlan] = useState<ShippingPlanDetail | null>(null);
+  const [isSavingPlan, setIsSavingPlan] = useState(false);
+
+  useEffect(() => {
+    if (!planId) return;
+    let isMounted = true;
+
+    getShippingPlan(planId, getStoredAuthToken() ?? undefined)
+      .then((detail) => {
+        if (!isMounted) return;
+        setPlan(detail);
+        if (detail.vehicleNewId) setSelectedContainerType(detail.vehicleNewId);
+        if (detail.items.length > 0) {
+          setSelectedItems(
+            detail.items.map((item) => ({
+              ...createSelectedItem({ value: item.cubstoolNewId, label: item.itemName }),
+              count: String(item.qty),
+            })),
+          );
+        }
+      })
+      .catch((error) => toast.error(error instanceof Error ? error.message : "Gagal mengambil shipping plan."));
+
+    return () => {
+      isMounted = false;
+    };
+  }, [planId]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    listMstCubstools(getStoredAuthToken() ?? undefined)
+      .then((rows) => {
+        if (!isMounted) return;
+        setWeightByProduct(Object.fromEntries(rows.map((row) => [row.newId, Number(row.weight) || 0])));
+      })
+      .catch(() => undefined); // weights are informational; the simulation still works without them
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   function handleZoomIn() {
     setZoom((current) => Math.min(current + 0.1, 2));
@@ -395,6 +453,7 @@ export default function ShippingPage() {
       if (!selectedContainerType) {
         setVehicleDimensions(DEFAULT_VEHICLE_DIMENSIONS);
         setSelectedVehicleName("");
+        setVehicleMaxPayload(null);
         setVehicleDetailError(null);
         return;
       }
@@ -411,17 +470,20 @@ export default function ShippingPage() {
         if (!detail) {
           setVehicleDimensions(DEFAULT_VEHICLE_DIMENSIONS);
           setSelectedVehicleName("");
+          setVehicleMaxPayload(null);
           setVehicleDetailError("Detail vehicle tidak ditemukan.");
           return;
         }
 
         setVehicleDimensions(getVehicleDimensions(detail));
         setSelectedVehicleName(detail.name || "");
+        setVehicleMaxPayload(Number(detail.maxPayload) > 0 ? Number(detail.maxPayload) : null);
       } catch (error) {
         if (!isMounted) return;
 
         setVehicleDimensions(DEFAULT_VEHICLE_DIMENSIONS);
         setSelectedVehicleName("");
+        setVehicleMaxPayload(null);
         setVehicleDetailError(error instanceof Error ? error.message : "Gagal mengambil detail vehicle.");
       } finally {
         if (isMounted) {
@@ -441,6 +503,35 @@ export default function ShippingPage() {
   const totalSelectedCount = selectedItems.reduce((sum, item) => sum + parseCount(item.count), 0);
   const cargoLayout = buildCargoLayout(selectedItems, vehicleDimensions);
   const capacitySignal = getCapacitySignal(cargoLayout.utilizationPct);
+  const totalWeightKg = selectedItems.reduce((sum, item) => sum + Math.round(parseCount(item.count)) * (weightByProduct[item.value] ?? 0), 0);
+  const isOverweight = vehicleMaxPayload !== null && totalWeightKg > vehicleMaxPayload;
+  const planLocked = plan !== null && plan.status !== "DRAFT" && plan.status !== "PLANNED";
+
+  async function handleSavePlanLoad() {
+    if (!planId || planLocked) return;
+    if (!selectedContainerType) return toast.error("Pilih container type terlebih dahulu.");
+    if (selectedItems.length === 0) return toast.error("Tambahkan minimal satu product sebelum menyimpan.");
+    if (cargoLayout.hiddenUnits > 0) return toast.error("Jumlah barang melebihi kapasitas kendaraan. Kurangi quantity terlebih dahulu.");
+
+    setIsSavingPlan(true);
+    try {
+      await saveShippingPlanLoad(
+        planId,
+        {
+          vehicleNewId: selectedContainerType,
+          utilizationPct: Math.round(cargoLayout.utilizationPct * 100) / 100,
+          items: selectedItems.map((item) => ({ cubstoolNewId: item.value, qty: Math.round(parseCount(item.count)) })).filter((item) => item.qty > 0),
+        },
+        getStoredAuthToken() ?? undefined,
+      );
+      if (isOverweight) toast("Plan tersimpan, tetapi berat melebihi max payload kendaraan.", { icon: "⚠️" });
+      else toast.success("Load simulation tersimpan ke shipping plan.");
+      router.push(`/shipping/plan/${planId}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Gagal menyimpan ke shipping plan.");
+      setIsSavingPlan(false);
+    }
+  }
 
   function handleSaveData() {
     if (!selectedContainerType) {
@@ -687,6 +778,21 @@ export default function ShippingPage() {
             <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-slate-400 sm:text-sm">
               {isLoadingVehicleDetail ? "Loading dimensions..." : formatDimensionsLabel(vehicleDimensions)}
             </p>
+            {plan ? (
+              <p className="mt-0.5 truncate text-xs font-medium text-slate-500 dark:text-slate-400 sm:text-sm">
+                <Link href={`/shipping/plan/${plan.newId}`} className="font-semibold text-blue-600 hover:underline">
+                  {plan.planNo}
+                </Link>{" "}
+                · {plan.originName} → {plan.destinationName}
+                {planLocked ? ` · ${plan.status} (read only)` : ""}
+              </p>
+            ) : null}
+            {selectedItems.length > 0 ? (
+              <p className={cn("mt-0.5 text-xs font-medium sm:text-sm", isOverweight ? "text-red-600" : "text-slate-500 dark:text-slate-400")}>
+                Weight {+totalWeightKg.toFixed(2)} kg{vehicleMaxPayload !== null ? ` / ${vehicleMaxPayload} kg max payload` : ""}
+                {isOverweight ? " — over payload!" : ""}
+              </p>
+            ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-3">
             <div className="flex gap-2 rounded-full bg-slate-800 px-3 py-2 shadow-lg">
@@ -795,10 +901,11 @@ export default function ShippingPage() {
               <Button
                 variant="outline"
                 className="h-11 rounded-xl border-slate-200/90 bg-white/92 px-4 text-sm font-semibold text-slate-700 shadow-lg backdrop-blur-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900/92 dark:text-slate-200 dark:hover:bg-slate-800"
-                onClick={handleSaveData}
+                onClick={planId ? () => void handleSavePlanLoad() : handleSaveData}
+                disabled={isSavingPlan || planLocked}
               >
                 <Box className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                <span>Save Data</span>
+                <span>{planId ? (isSavingPlan ? "Saving..." : "Save to Plan") : "Save Data"}</span>
               </Button>
             </div>
 

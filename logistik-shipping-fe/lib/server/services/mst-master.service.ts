@@ -15,6 +15,7 @@ function vehicleInput(body: Record<string, unknown>) {
     dimensionsW: optNumber(body.dimensions_W_m ?? body.dimensionsW, "dimensions W"),
     floorArea: optNumber(body.floorArea_m2 ?? body.floorArea, "floor area"),
     maxHeight: optNumber(body.maxHeight_m ?? body.maxHeight, "max height"),
+    maxPayload: optNumber(body.maxPayload_kg ?? body.maxPayload, "max payload"),
     isActive: body.isActive !== false,
   };
 }

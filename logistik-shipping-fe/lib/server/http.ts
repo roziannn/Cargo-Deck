@@ -41,6 +41,15 @@ export async function readJson(req: Request): Promise<Record<string, unknown>> {
   return body as Record<string, unknown>;
 }
 
+/** The authenticated user of the current request (name used for audit columns). */
+export async function currentActor() {
+  const header = (await headers()).get("authorization") ?? "";
+  const token = header.match(/^Bearer\s+(.+)$/i)?.[1];
+  const payload = token ? verifyToken(token) : null;
+  if (!payload) throw new HttpError(401, "Unauthorized");
+  return payload.name || payload.preferred_username;
+}
+
 /**
  * Wraps a route handler: requires a valid `Authorization: Bearer <token>` (unless `isPublic`),
  * maps HttpError to its status and anything else to 500.
@@ -68,4 +77,15 @@ export function optNumber(value: unknown, label: string) {
   const n = Number(value);
   if (!Number.isFinite(n)) throw new HttpError(400, `${label} must be a number.`);
   return n;
+}
+
+export function requireDate(value: unknown, label: string) {
+  const s = requireString(value, label);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(s))) throw new HttpError(400, `${label} must be a date (YYYY-MM-DD).`);
+  return s;
+}
+
+export function requireEnum<T extends string>(value: unknown, allowed: readonly T[], label: string): T {
+  if (typeof value !== "string" || !allowed.includes(value as T)) throw new HttpError(400, `${label} must be one of: ${allowed.join(", ")}.`);
+  return value as T;
 }
