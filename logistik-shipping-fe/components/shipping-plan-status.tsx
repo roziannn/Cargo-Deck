@@ -10,6 +10,7 @@ const STATUS_STYLE: Record<ShippingPlanStatus, string> = {
   PICKING: "border-orange-200 bg-orange-100 text-orange-700 hover:bg-orange-100",
   LOADING: "border-violet-200 bg-violet-100 text-violet-700 hover:bg-violet-100",
   DISPATCHED: "border-teal-200 bg-teal-100 text-teal-700 hover:bg-teal-100",
+  COMPLETED: "border-green-200 bg-green-100 text-green-700 hover:bg-green-100",
   CANCELLED: "border-red-200 bg-red-100 text-red-700 hover:bg-red-100",
 };
 

@@ -9,11 +9,16 @@ import { Toaster, toast } from "react-hot-toast";
 import { ShippingBookingDialog } from "@/components/shipping-booking-dialog";
 import { ShippingLoadingDialog } from "@/components/shipping-loading-dialog";
 import { ShippingPickingDialog } from "@/components/shipping-picking-dialog";
+import { IncidentStatusBadge } from "@/components/shipping-incident-status";
+import { ShippingIncidentDialog } from "@/components/shipping-incident-dialog";
 import { PlanStatusBadge, PriorityBadge } from "@/components/shipping-plan-status";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getStoredAuthToken } from "@/lib/api/auth";
+import { INCIDENT_TYPE_LABEL, isIncidentOpen, type ShippingIncident } from "@/lib/api/shipping-incident";
 import {
   changeShippingPlanStatus,
   dispatchShippingPlan,
@@ -22,7 +27,9 @@ import {
   formatRupiah,
   getShippingPlan,
   getShippingPlanEstimate,
+  receiveShippingPlan,
   startShippingPlanPicking,
+  updateShippingPlanEta,
   type FreightEstimate,
   type ShippingPlanDetail,
   type ShippingPlanStatus,
@@ -37,15 +44,52 @@ const STEPS: { status: ShippingPlanStatus; label: string }[] = [
   { status: "PICKING", label: "Picking & packing" },
   { status: "LOADING", label: "Loading" },
   { status: "DISPATCHED", label: "Dispatched" },
+  { status: "COMPLETED", label: "Completed" },
 ];
 
 const HANDLING_LABEL: Record<string, string> = { COLD_CHAIN: "Cold chain", FRAGILE: "Fragile", HAZARDOUS: "Hazardous" };
+
+function addDays(date: string, days: number) {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
       <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="text-sm">{children}</div>
+    </div>
+  );
+}
+
+function EtaFields({
+  etaDate,
+  graceDays,
+  onEtaDate,
+  onGraceDays,
+}: {
+  etaDate: string;
+  graceDays: string;
+  onEtaDate: (value: string) => void;
+  onGraceDays: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-3 rounded-md border p-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label>Estimasi tiba (ETA)</Label>
+          <Input type="date" value={etaDate} onChange={(e) => onEtaDate(e.target.value)} />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Masa tunggu (hari)</Label>
+          <Input value={graceDays} onChange={(e) => onGraceDays(e.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" />
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Kalau sampai ETA + masa tunggu tidak ada insiden, plan selesai otomatis. Bisa juga ditandai diterima lebih awal.
+      </p>
     </div>
   );
 }
@@ -62,6 +106,14 @@ export default function ShippingPlanDetailPage() {
   const [openDispatch, setOpenDispatch] = useState(false);
   const [openPicking, setOpenPicking] = useState(false);
   const [openLoading, setOpenLoading] = useState(false);
+  const [openReceive, setOpenReceive] = useState(false);
+  const [receivedBy, setReceivedBy] = useState("");
+  const [receiveNotes, setReceiveNotes] = useState("");
+  const [openEta, setOpenEta] = useState(false);
+  const [etaDate, setEtaDate] = useState("");
+  const [graceDays, setGraceDays] = useState("1");
+  const [openIncident, setOpenIncident] = useState(false);
+  const [selectedIncident, setSelectedIncident] = useState<ShippingIncident | null>(null);
   const [estimate, setEstimate] = useState<FreightEstimate | null>(null);
 
   const load = useCallback(async () => {
@@ -105,10 +157,58 @@ export default function ShippingPlanDetailPage() {
     }
   }
 
-  async function runDispatch() {
+  /** ETA and grace days from the form, or null (with a toast) when they are not valid. */
+  function readEta() {
+    const grace = Number(graceDays);
+    if (!etaDate) return void toast.error("Isi estimasi tiba.");
+    if (!Number.isInteger(grace) || grace < 0 || grace > 30) return void toast.error("Masa tunggu harus 0 sampai 30 hari.");
+    return { etaDate, graceDays: grace };
+  }
+
+  function openEtaForm(forDispatch: boolean) {
+    setEtaDate((forDispatch ? plan?.suggestedEtaDate : plan?.etaDate) ?? plan?.suggestedEtaDate ?? "");
+    setGraceDays(String(forDispatch ? 1 : (plan?.graceDays ?? 1)));
+    if (forDispatch) setOpenDispatch(true);
+    else setOpenEta(true);
+  }
+
+  async function runEta() {
+    const eta = readEta();
+    if (!eta) return;
     setIsBusy(true);
     try {
-      const dispatched = await dispatchShippingPlan(newId, getStoredAuthToken() ?? undefined);
+      setPlan(await updateShippingPlanEta(newId, eta, getStoredAuthToken() ?? undefined));
+      setOpenEta(false);
+      toast.success("ETA diperbarui.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal mengubah ETA.");
+      await load();
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function runReceive() {
+    if (!receivedBy.trim()) return void toast.error("Isi nama penerima.");
+    setIsBusy(true);
+    try {
+      setPlan(await receiveShippingPlan(newId, { receivedBy: receivedBy.trim(), notes: receiveNotes.trim() || undefined }, getStoredAuthToken() ?? undefined));
+      setOpenReceive(false);
+      toast.success("Pengiriman ditandai diterima.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menandai diterima.");
+      await load();
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function runDispatch() {
+    const eta = readEta();
+    if (!eta) return;
+    setIsBusy(true);
+    try {
+      const dispatched = await dispatchShippingPlan(newId, eta, getStoredAuthToken() ?? undefined);
       setPlan(dispatched);
       setOpenDispatch(false);
       toast.success(`Surat jalan ${dispatched.deliveryNoteNo} diterbitkan.`);
@@ -144,7 +244,7 @@ export default function ShippingPlanDetailPage() {
   const payload = plan.vehicleMaxPayload ? Number(plan.vehicleMaxPayload) : null;
   const overweight = payload !== null && weight > payload;
   const stepIndex = STEPS.findIndex((s) => s.status === plan.status);
-  const showActuals = plan.status === "PICKING" || plan.status === "LOADING" || plan.status === "DISPATCHED";
+  const showActuals = plan.status === "PICKING" || plan.status === "LOADING" || plan.status === "DISPATCHED" || plan.status === "COMPLETED";
 
   return (
     <div className="min-h-screen space-y-6 p-6 dark:bg-zinc-900">
@@ -216,19 +316,34 @@ export default function ShippingPlanDetailPage() {
                   <FileText className="mr-2 h-4 w-4" /> Preview Surat Jalan
                 </Link>
               </Button>
-              <Button onClick={() => setOpenDispatch(true)} disabled={isBusy || !plan.readiness.complete} title={plan.readiness.complete ? undefined : "Lengkapi data loading dulu"}>
+              <Button onClick={() => openEtaForm(true)} disabled={isBusy || !plan.readiness.complete} title={plan.readiness.complete ? undefined : "Lengkapi data loading dulu"}>
                 Terbitkan Surat Jalan &amp; Berangkatkan
               </Button>
             </>
           )}
-          {plan.status === "DISPATCHED" && (
-            <Button asChild>
+          {(plan.status === "DISPATCHED" || plan.status === "COMPLETED") && (
+            <Button variant={plan.status === "DISPATCHED" ? "outline" : "default"} asChild>
               <Link href={`/surat-jalan/${plan.newId}`}>
                 <FileText className="mr-2 h-4 w-4" /> Cetak Surat Jalan {plan.deliveryNoteNo}
               </Link>
             </Button>
           )}
-          {plan.status !== "CANCELLED" && plan.status !== "DISPATCHED" && (
+          {plan.status === "DISPATCHED" && (
+            <>
+              <Button variant="outline" onClick={() => openEtaForm(false)} disabled={isBusy}>
+                Ubah ETA
+              </Button>
+              <Button onClick={() => setOpenReceive(true)} disabled={isBusy}>
+                <CircleCheck className="mr-2 h-4 w-4" /> Tandai Diterima
+              </Button>
+            </>
+          )}
+          {plan.canReportIncident && (
+            <Button variant="outline" onClick={() => setOpenIncident(true)} disabled={isBusy}>
+              <AlertTriangle className="mr-2 h-4 w-4" /> Lapor Insiden
+            </Button>
+          )}
+          {plan.status !== "CANCELLED" && plan.status !== "DISPATCHED" && plan.status !== "COMPLETED" && (
             <Button variant="outline" className="text-destructive" onClick={() => setOpenCancel(true)} disabled={isBusy}>
               Cancel Plan
             </Button>
@@ -403,7 +518,7 @@ export default function ShippingPlanDetailPage() {
         </div>
       )}
 
-      {(plan.status === "LOADING" || plan.status === "DISPATCHED") && (
+      {(plan.status === "LOADING" || plan.status === "DISPATCHED" || plan.status === "COMPLETED") && (
         <div className="space-y-3">
           <h2 className="text-lg font-semibold">Loading</h2>
           <div className="grid gap-6 rounded-lg border p-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -463,6 +578,63 @@ export default function ShippingPlanDetailPage() {
         </div>
       )}
 
+      {(plan.status === "DISPATCHED" || plan.status === "COMPLETED") && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold">Pengiriman</h2>
+          <div className="grid gap-6 rounded-lg border p-5 sm:grid-cols-2 lg:grid-cols-4">
+            <Field label="Estimasi tiba (ETA)">{formatPlanDate(plan.etaDate)}</Field>
+            <Field label="Selesai otomatis setelah">
+              {plan.etaDate ? formatPlanDate(addDays(plan.etaDate, plan.graceDays)) : "-"}
+              <div className="text-xs text-muted-foreground">ETA + {plan.graceDays} hari, kalau tidak ada insiden</div>
+            </Field>
+            {plan.status === "COMPLETED" ? (
+              <>
+                <Field label="Selesai">{formatPlanDateTime(plan.deliveredAt)}</Field>
+                <Field label="Diterima oleh">
+                  {plan.receivedBy || "Otomatis (tanpa insiden)"}
+                  {plan.receiveNotes && <div className="text-xs text-muted-foreground">{plan.receiveNotes}</div>}
+                </Field>
+              </>
+            ) : (
+              <Field label="Status">Dalam perjalanan</Field>
+            )}
+          </div>
+        </div>
+      )}
+
+      {(plan.incidents.length > 0 || plan.canReportIncident) && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold">Insiden &amp; Klaim</h2>
+          {plan.incidents.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Belum ada insiden.</div>
+          ) : (
+            <div className="space-y-2">
+              {plan.incidents.map((incident) => (
+                <button
+                  key={incident.newId}
+                  type="button"
+                  onClick={() => setSelectedIncident(incident)}
+                  className="flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-left text-sm hover:bg-muted/40"
+                >
+                  <div className="space-y-0.5">
+                    <div className="font-medium">
+                      {incident.incidentNo} · {INCIDENT_TYPE_LABEL[incident.type]}
+                    </div>
+                    <div className="text-muted-foreground">{incident.description}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Estimasi selesai {formatPlanDate(incident.targetDate)}
+                      {incident.claimAmount ? ` · klaim ${formatRupiah(incident.claimAmount)}` : ""}
+                      {incident.solution && !isIncidentOpen(incident.status) ? ` · ${incident.solution}` : ""}
+                    </div>
+                  </div>
+                  <IncidentStatusBadge status={incident.status} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="space-y-3">
         <h2 className="text-lg font-semibold">History</h2>
         <ol className="space-y-3 border-l pl-4">
@@ -516,6 +688,7 @@ export default function ShippingPlanDetailPage() {
               Segel {plan.sealNo} · berat bersih {plan.readiness.netWeightKg} kg
             </div>
           </div>
+          <EtaFields etaDate={etaDate} graceDays={graceDays} onEtaDate={setEtaDate} onGraceDays={setGraceDays} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenDispatch(false)} disabled={isBusy}>
               Kembali
@@ -526,6 +699,64 @@ export default function ShippingPlanDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={openEta} onOpenChange={setOpenEta}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ubah ETA</DialogTitle>
+            <DialogDescription>Kalau ETA mundur karena kendala, ubah di sini supaya plan tidak selesai otomatis terlalu cepat.</DialogDescription>
+          </DialogHeader>
+          <EtaFields etaDate={etaDate} graceDays={graceDays} onEtaDate={setEtaDate} onGraceDays={setGraceDays} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpenEta(false)} disabled={isBusy}>
+              Batal
+            </Button>
+            <Button onClick={() => void runEta()} disabled={isBusy}>
+              Simpan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={openReceive} onOpenChange={setOpenReceive}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Tandai diterima</DialogTitle>
+            <DialogDescription>Barang sudah sampai di tujuan. Kalau ada yang rusak atau kurang, tandai dulu lalu laporkan sebagai insiden.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Diterima oleh</Label>
+              <Input value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} placeholder="Nama penerima" maxLength={100} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Catatan (opsional)</Label>
+              <textarea value={receiveNotes} onChange={(e) => setReceiveNotes(e.target.value)} rows={2} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpenReceive(false)} disabled={isBusy}>
+              Batal
+            </Button>
+            <Button onClick={() => void runReceive()} disabled={isBusy}>
+              Tandai Diterima
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {plan.canReportIncident && (
+        <ShippingIncidentDialog key={`new-${plan.incidents.length}`} planNewId={plan.newId} planNo={plan.planNo} open={openIncident} onOpenChange={setOpenIncident} onSaved={() => void load()} />
+      )}
+      {selectedIncident && (
+        <ShippingIncidentDialog
+          key={`${selectedIncident.newId}-${selectedIncident.updatedDate}`}
+          incident={selectedIncident}
+          open
+          onOpenChange={(open) => !open && setSelectedIncident(null)}
+          onSaved={() => void load()}
+        />
+      )}
 
       <Dialog open={openCancel} onOpenChange={setOpenCancel}>
         <DialogContent className="sm:max-w-md">

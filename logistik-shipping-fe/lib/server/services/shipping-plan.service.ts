@@ -11,6 +11,7 @@ import {
 import { freightCost, roadDistanceKm } from "@/lib/freight";
 import { mstLocationRepository, type MstLocationInput } from "@/lib/server/repositories/mst-location.repository";
 import { mstCarrierRepository, mstDriverRepository } from "@/lib/server/repositories/mst-logistics.repository";
+import { shippingIncidentRepository } from "@/lib/server/repositories/shipping-incident.repository";
 import {
   shippingPlanRepository,
   type ShippingPlanHeaderInput,
@@ -98,9 +99,37 @@ function mapReference(err: unknown): never {
 }
 
 async function getPlanOrThrow(newId: string) {
+  await shippingPlanRepository.autoComplete();
   const plan = await shippingPlanRepository.getByNewId(requireGuid(newId, "plan id"));
   if (!plan) throw new HttpError(404, "Shipping plan not found.");
   return plan;
+}
+
+const DAY_MS = 86_400_000;
+/** How long after completion an incident can still be reported (damage is often found only when unpacking). */
+export const INCIDENT_REPORT_DAYS = 7;
+const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+
+/** Default ETA: today plus one day per ~400 km of road, at least one day. */
+function suggestedEta(plan: ShippingPlanRow) {
+  const km = plan.distanceKm !== null ? Number(plan.distanceKm) : 0;
+  const days = Math.max(1, Math.ceil((Number.isFinite(km) ? km : 0) / 400));
+  return isoDay(new Date(Date.now() + days * DAY_MS));
+}
+
+/** ETA date and grace days from a request body; missing values fall back to the given ETA and 1 day. */
+function etaInput(body: Record<string, unknown>, fallbackEta: string) {
+  const etaDate = body.etaDate === undefined || body.etaDate === "" ? fallbackEta : requireDate(body.etaDate, "etaDate");
+  const graceRaw = body.graceDays === undefined || body.graceDays === "" || body.graceDays === null ? 1 : Number(body.graceDays);
+  if (!Number.isInteger(graceRaw) || graceRaw < 0 || graceRaw > 30) throw new HttpError(400, "graceDays must be a whole number from 0 to 30.");
+  return { etaDate, graceDays: graceRaw };
+}
+
+/** Incidents can be filed while the plan is on its way and for a week after it completed. */
+export function canReportIncident(plan: ShippingPlanRow) {
+  if (plan.status === "DISPATCHED") return true;
+  if (plan.status !== "COMPLETED" || !plan.deliveredAt) return false;
+  return Date.now() - new Date(plan.deliveredAt).getTime() <= INCIDENT_REPORT_DAYS * DAY_MS;
 }
 
 const PLATE_RE = /^[A-Z]{1,2} ?\d{1,4} ?[A-Z]{0,3}$/;
@@ -247,15 +276,27 @@ const TRANSITIONS: Record<string, [ShippingPlanStatus[], ShippingPlanStatus]> = 
 };
 
 export const shippingPlanService = {
-  getAll: () => shippingPlanRepository.getAll(),
+  async getAll() {
+    await shippingPlanRepository.autoComplete();
+    return shippingPlanRepository.getAll();
+  },
 
   async getDetail(newId: string) {
     const plan = await getPlanOrThrow(newId);
-    const [items, history] = await Promise.all([
+    const [items, history, incidents] = await Promise.all([
       shippingPlanRepository.getItems(plan.newId),
       shippingPlanRepository.getHistory(plan.newId),
+      shippingIncidentRepository.getByPlan(plan.newId),
     ]);
-    return { ...plan, items, history, readiness: loadingReadiness(plan, items) };
+    return {
+      ...plan,
+      items,
+      history,
+      incidents,
+      readiness: loadingReadiness(plan, items),
+      suggestedEtaDate: suggestedEta(plan),
+      canReportIncident: canReportIncident(plan),
+    };
   },
 
   async create(body: Record<string, unknown>) {
@@ -376,14 +417,38 @@ export const shippingPlanService = {
   },
 
   /** Issues the surat jalan number and sends the truck off. */
-  async dispatch(newId: string) {
+  async dispatch(newId: string, body: Record<string, unknown> = {}) {
     const plan = await getPlanOrThrow(newId);
     if (plan.status !== "LOADING") throw new HttpError(409, `Only a plan that is being loaded can be dispatched (status is ${plan.status}).`);
     const readiness = loadingReadiness(plan, await shippingPlanRepository.getItems(plan.newId));
     if (!readiness.complete) throw new HttpError(400, `Loading belum lengkap: ${readiness.missing.join(" ")}`);
+    const { etaDate, graceDays } = etaInput(body, suggestedEta(plan));
     const by = await currentActor();
-    const noteNo = await shippingPlanRepository.dispatch(plan.newId, by);
+    const noteNo = await shippingPlanRepository.dispatch(plan.newId, etaDate, graceDays, by);
     if (!noteNo) throw new HttpError(409, "The plan status was changed by someone else. Reload and try again.");
+    return this.getDetail(plan.newId);
+  },
+
+  /** Changes the ETA or the grace days of a plan that is on its way. */
+  async updateEta(newId: string, body: Record<string, unknown>) {
+    const plan = await getPlanOrThrow(newId);
+    if (plan.status !== "DISPATCHED") throw new HttpError(409, `ETA can only be changed while the plan is on its way (status is ${plan.status}).`);
+    const { etaDate, graceDays } = etaInput(body, plan.etaDate ?? suggestedEta(plan));
+    const by = await currentActor();
+    const ok = await shippingPlanRepository.updateEta(plan.newId, etaDate, graceDays, by);
+    if (!ok) throw new HttpError(409, "The plan status was changed by someone else. Reload and try again.");
+    return this.getDetail(plan.newId);
+  },
+
+  /** DISPATCHED -> COMPLETED: the goods have arrived. */
+  async receive(newId: string, body: Record<string, unknown>) {
+    const plan = await getPlanOrThrow(newId);
+    if (plan.status !== "DISPATCHED") throw new HttpError(409, `Only a plan that is on its way can be received (status is ${plan.status}).`);
+    const receivedBy = requireString(body.receivedBy, "receivedBy");
+    if (receivedBy.length > 100) throw new HttpError(400, "receivedBy is too long (max 100).");
+    const by = await currentActor();
+    const ok = await shippingPlanRepository.receive(plan.newId, receivedBy, optString(body.notes), by);
+    if (!ok) throw new HttpError(409, "The plan status was changed by someone else. Reload and try again.");
     return this.getDetail(plan.newId);
   },
 

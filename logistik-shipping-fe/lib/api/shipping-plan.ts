@@ -1,6 +1,7 @@
 import { apiFetch, apiPath } from "@/lib/api-client";
+import type { ShippingIncident } from "@/lib/api/shipping-incident";
 
-export type ShippingPlanStatus = "DRAFT" | "PLANNED" | "APPROVED" | "BOOKED" | "PICKING" | "LOADING" | "DISPATCHED" | "CANCELLED";
+export type ShippingPlanStatus = "DRAFT" | "PLANNED" | "APPROVED" | "BOOKED" | "PICKING" | "LOADING" | "DISPATCHED" | "COMPLETED" | "CANCELLED";
 export type ShippingPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
 export type SpecialHandling = "COLD_CHAIN" | "FRAGILE" | "HAZARDOUS";
 
@@ -44,6 +45,12 @@ export type ShippingPlan = {
   bookingNotes: string | null;
   deliveryNoteNo: string | null;
   dispatchedAt: string | null;
+  /** Estimated arrival (YYYY-MM-DD) and the grace days after it before the plan completes by itself. */
+  etaDate: string | null;
+  graceDays: number;
+  deliveredAt: string | null;
+  receivedBy: string | null;
+  receiveNotes: string | null;
   // picking, loading checklist, seal and weighbridge
   pickingNotes: string | null;
   chkVehiclePapers: boolean;
@@ -90,7 +97,16 @@ export type ShippingPlanHistory = {
   changedDate: string;
 };
 
-export type ShippingPlanDetail = ShippingPlan & { items: ShippingPlanItem[]; history: ShippingPlanHistory[]; readiness: LoadingReadiness };
+export type ShippingPlanDetail = ShippingPlan & {
+  items: ShippingPlanItem[];
+  history: ShippingPlanHistory[];
+  readiness: LoadingReadiness;
+  incidents: ShippingIncident[];
+  /** ETA proposed at dispatch, from the booked distance. */
+  suggestedEtaDate: string;
+  /** False once the plan is completed for longer than the reporting window. */
+  canReportIncident: boolean;
+};
 
 export type ShippingPlanHeaderPayload = {
   originLocationNewId: string;
@@ -231,8 +247,16 @@ export type LoadingPayload = {
 export const saveShippingPlanLoading = (newId: string, payload: LoadingPayload, token?: string) =>
   apiFetch<ShippingPlanDetail>(path(newId, "/loading"), { method: "PUT", body: JSON.stringify(payload), token });
 
-export const dispatchShippingPlan = (newId: string, token?: string) =>
-  apiFetch<ShippingPlanDetail>(path(newId, "/dispatch"), { method: "POST", token });
+export type EtaPayload = { etaDate: string; graceDays: number };
+
+export const dispatchShippingPlan = (newId: string, payload: EtaPayload, token?: string) =>
+  apiFetch<ShippingPlanDetail>(path(newId, "/dispatch"), { method: "POST", body: JSON.stringify(payload), token });
+
+export const updateShippingPlanEta = (newId: string, payload: EtaPayload, token?: string) =>
+  apiFetch<ShippingPlanDetail>(path(newId, "/eta"), { method: "PUT", body: JSON.stringify(payload), token });
+
+export const receiveShippingPlan = (newId: string, payload: { receivedBy: string; notes?: string }, token?: string) =>
+  apiFetch<ShippingPlanDetail>(path(newId, "/receive"), { method: "POST", body: JSON.stringify(payload), token });
 
 export const getDeliveryNote = (newId: string, token?: string) =>
   apiFetch<DeliveryNote>(path(newId, "/delivery-note"), { method: "GET", token, cache: "no-store" });

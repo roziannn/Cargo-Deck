@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 import { execute, query, withTransaction } from "@/lib/server/db";
 
-export type ShippingPlanStatus = "DRAFT" | "PLANNED" | "APPROVED" | "BOOKED" | "PICKING" | "LOADING" | "DISPATCHED" | "CANCELLED";
+export type ShippingPlanStatus = "DRAFT" | "PLANNED" | "APPROVED" | "BOOKED" | "PICKING" | "LOADING" | "DISPATCHED" | "COMPLETED" | "CANCELLED";
 
 export type ShippingPlanRow = {
   id: number;
@@ -43,6 +43,11 @@ export type ShippingPlanRow = {
   bookingNotes: string | null;
   deliveryNoteNo: string | null;
   dispatchedAt: Date | null;
+  etaDate: string | null;
+  graceDays: number;
+  deliveredAt: Date | null;
+  receivedBy: string | null;
+  receiveNotes: string | null;
   // picking, loading checklist, seal and weighbridge
   pickingNotes: string | null;
   chkVehiclePapers: boolean;
@@ -159,6 +164,7 @@ const SELECT = `
          trim_scale(p.distance_km)::text AS distance_km, p.base_fee::text AS base_fee, p.per_km_fee::text AS per_km_fee,
          p.freight_cost::text AS freight_cost, p.loading_fee::text AS loading_fee, p.other_fee::text AS other_fee,
          p.total_cost::text AS total_cost, p.booking_notes, p.delivery_note_no, p.dispatched_at,
+         to_char(p.eta_date, 'YYYY-MM-DD') AS eta_date, p.grace_days, p.delivered_at, p.received_by, p.receive_notes,
          p.picking_notes, p.chk_vehicle_papers, p.chk_vehicle_clean, p.chk_vehicle_condition, p.chk_driver_ready, p.chk_cargo_secured,
          p.loading_temp_c::float8 AS loading_temp_c, p.seal_no,
          trim_scale(p.gross_weight_kg)::text AS gross_weight_kg, trim_scale(p.tare_weight_kg)::text AS tare_weight_kg, p.loading_notes,
@@ -298,22 +304,73 @@ export const shippingPlanRepository = {
     });
   },
 
-  /** Issues the delivery note number and marks the plan as dispatched. */
-  dispatch(newId: string, by: string) {
+  /** Issues the delivery note number, fixes ETA and grace period, and marks the plan as dispatched. */
+  dispatch(newId: string, etaDate: string, graceDays: number, by: string) {
     return withTransaction(async (tx) => {
       const rows = await query<{ deliveryNoteNo: string }>(
         `UPDATE shipping_plan
-         SET status = 'DISPATCHED', dispatched_at = now(), updated_by = @by, updated_date = now(),
+         SET status = 'DISPATCHED', dispatched_at = now(), eta_date = @etaDate, grace_days = @graceDays,
+             updated_by = @by, updated_date = now(),
              delivery_note_no = 'SJ-' || to_char(now(), 'YYMM') || '-' || lpad(nextval('delivery_note_no_seq')::text, 4, '0')
          WHERE new_id = @newId AND status = 'LOADING'
          RETURNING delivery_note_no`,
-        { newId, by },
+        { newId, etaDate, graceDays, by },
         tx,
       );
       if (rows.length === 0) return null;
-      await addHistory(tx, newId, "LOADING", "DISPATCHED", `Surat jalan ${rows[0].deliveryNoteNo} diterbitkan`, by);
+      await addHistory(tx, newId, "LOADING", "DISPATCHED", `Surat jalan ${rows[0].deliveryNoteNo} diterbitkan, ETA ${etaDate} (+${graceDays} hari)`, by);
       return rows[0].deliveryNoteNo;
     });
+  },
+
+  /** Changes ETA and grace days of a plan that is on its way. */
+  async updateEta(newId: string, etaDate: string, graceDays: number, by: string) {
+    return withTransaction(async (tx) => {
+      const rows = await execute(
+        `UPDATE shipping_plan SET eta_date = @etaDate, grace_days = @graceDays, updated_by = @by, updated_date = now()
+         WHERE new_id = @newId AND status = 'DISPATCHED'`,
+        { newId, etaDate, graceDays, by },
+        tx,
+      );
+      if (rows === 0) return false;
+      await addHistory(tx, newId, "DISPATCHED", "DISPATCHED", `ETA diubah ke ${etaDate} (+${graceDays} hari)`, by);
+      return true;
+    });
+  },
+
+  /** DISPATCHED -> COMPLETED by hand: the goods arrived. */
+  receive(newId: string, receivedBy: string, notes: string | null, by: string) {
+    return withTransaction(async (tx) => {
+      const rows = await execute(
+        `UPDATE shipping_plan SET status = 'COMPLETED', delivered_at = now(), received_by = @receivedBy, receive_notes = @notes,
+                updated_by = @by, updated_date = now()
+         WHERE new_id = @newId AND status = 'DISPATCHED'`,
+        { newId, receivedBy, notes, by },
+        tx,
+      );
+      if (rows === 0) return false;
+      await addHistory(tx, newId, "DISPATCHED", "COMPLETED", `Diterima oleh ${receivedBy}${notes ? `: ${notes}` : ""}`, by);
+      return true;
+    });
+  },
+
+  /**
+   * Completes every dispatched plan whose ETA + grace days have passed and that has no open incident.
+   * Runs whenever plans are read, so no scheduler is needed.
+   */
+  async autoComplete() {
+    await query(
+      `WITH done AS (
+         UPDATE shipping_plan p
+         SET status = 'COMPLETED', delivered_at = now(), updated_by = 'system', updated_date = now()
+         WHERE p.status = 'DISPATCHED' AND p.eta_date IS NOT NULL
+           AND p.eta_date + p.grace_days < CURRENT_DATE
+           AND NOT EXISTS (SELECT 1 FROM shipping_incident i WHERE i.plan_new_id = p.new_id AND i.status IN ('OPEN', 'IN_PROGRESS', 'CLAIM_FILED'))
+         RETURNING p.new_id
+       )
+       INSERT INTO shipping_plan_history (plan_new_id, from_status, to_status, note, changed_by)
+       SELECT new_id, 'DISPATCHED', 'COMPLETED', 'Selesai otomatis: tidak ada insiden sampai batas ETA', 'system' FROM done`,
+    );
   },
 
   async getDeliveryNote(newId: string) {
