@@ -5,12 +5,14 @@ import { Bell } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useI18n } from "@/lib/i18n/provider";
 import { getStoredAuthToken, getStoredAuthUser } from "@/lib/api/auth";
 import { listCoreNotifications, type CoreNotificationItem } from "@/lib/api/core-notification";
 import { DateFormat, DateFormatRelativeHuman } from "@/utils/date-format";
 
 export function NotificationBell() {
   const router = useRouter();
+  const { t } = useI18n();
   const [open, setOpen] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
   const [items, setItems] = React.useState<CoreNotificationItem[]>([]);
@@ -24,12 +26,12 @@ export function NotificationBell() {
     const compcode = user?.site?.trim() || "";
     const userPrincipleName = user?.email?.trim() || user?.username?.trim() || "";
     if (!compcode) {
-      setError("Compcode tidak ditemukan.");
+      setError(t("Compcode tidak ditemukan."));
       setItems([]);
       return;
     }
     if (!userPrincipleName) {
-      setError("UserPrincipleName tidak ditemukan.");
+      setError(t("UserPrincipleName tidak ditemukan."));
       setItems([]);
       return;
     }
@@ -40,13 +42,13 @@ export function NotificationBell() {
       const rows = await listCoreNotifications({ compcode, userPrincipleName }, token);
       setItems(rows);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Gagal mengambil notifikasi.";
+      const message = err instanceof Error ? err.message : t("Gagal mengambil notifikasi.");
       setError(message);
       setItems([]);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   React.useEffect(() => {
     void load();
@@ -77,7 +79,7 @@ export function NotificationBell() {
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           )}
-          <span className="sr-only">Notifications</span>
+          <span className="sr-only">{t("Notifications")}</span>
         </Button>
       </DropdownMenuTrigger>
 
@@ -85,20 +87,20 @@ export function NotificationBell() {
         <DropdownMenuLabel className="px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-sm font-semibold">Notifications</div>
+              <div className="text-sm font-semibold">{t("Notifications")}</div>
               <div className="text-xs font-normal text-muted-foreground">
-                {unreadCount > 0 ? `${unreadCount} unread notification${unreadCount > 1 ? "s" : ""}` : "You're all caught up"}
+                {unreadCount > 0 ? (unreadCount > 1 ? t("{count} unread notifications", { count: unreadCount }) : t("{count} unread notification", { count: unreadCount })) : t("You're all caught up")}
               </div>
             </div>
             <Button variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={() => void load()}>
-              Refresh
+              {t("Refresh")}
             </Button>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
 
         {isLoading && (
-          <div className="px-4 py-8 text-center text-sm text-muted-foreground">Loading notifications...</div>
+          <div className="px-4 py-8 text-center text-sm text-muted-foreground">{t("Loading notifications...")}</div>
         )}
 
         {!isLoading && error && (
@@ -106,7 +108,7 @@ export function NotificationBell() {
         )}
 
         {!isLoading && !error && items.length === 0 && (
-          <div className="px-4 py-10 text-center text-sm text-muted-foreground">No notifications.</div>
+          <div className="px-4 py-10 text-center text-sm text-muted-foreground">{t("No notifications.")}</div>
         )}
 
         {!isLoading && !error && items.length > 0 && (

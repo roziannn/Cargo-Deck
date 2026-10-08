@@ -1,4 +1,5 @@
 import { apiFetch, apiPath } from "@/lib/api-client";
+import { localeTag } from "@/lib/i18n/locale";
 import type { ShippingIncident } from "@/lib/api/shipping-incident";
 
 export type ShippingPlanStatus = "DRAFT" | "PLANNED" | "APPROVED" | "BOOKED" | "PICKING" | "LOADING" | "DISPATCHED" | "COMPLETED" | "CANCELLED";
@@ -148,7 +149,7 @@ export function formatPlanDate(value: string | null | undefined) {
   if (!value) return "-";
   const [y, m, d] = value.slice(0, 10).split("-").map(Number);
   if (!y || !m || !d) return value;
-  return new Date(y, m - 1, d).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+  return new Date(y, m - 1, d).toLocaleDateString(localeTag(), { day: "2-digit", month: "short", year: "numeric" });
 }
 
 export function formatPlanDateTime(value: string | null | undefined) {
@@ -156,7 +157,7 @@ export function formatPlanDateTime(value: string | null | undefined) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : date.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    : date.toLocaleString(localeTag(), { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 export type FreightEstimate = {
@@ -261,10 +262,9 @@ export const receiveShippingPlan = (newId: string, payload: { receivedBy: string
 export const getDeliveryNote = (newId: string, token?: string) =>
   apiFetch<DeliveryNote>(path(newId, "/delivery-note"), { method: "GET", token, cache: "no-store" });
 
-const rupiahFormat = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
 
 export function formatRupiah(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === "") return "-";
   const n = Number(value);
-  return Number.isFinite(n) ? rupiahFormat.format(n) : "-";
+  return Number.isFinite(n) ? `Rp ${n.toLocaleString(localeTag(), { maximumFractionDigits: 0 })}` : "-";
 }

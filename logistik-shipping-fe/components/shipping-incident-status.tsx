@@ -1,5 +1,8 @@
+"use client";
+
 import { Badge } from "@/components/ui/badge";
 import { INCIDENT_STATUS_LABEL, type IncidentStatus } from "@/lib/api/shipping-incident";
+import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 
 const STATUS_STYLE: Record<IncidentStatus, string> = {
@@ -11,5 +14,6 @@ const STATUS_STYLE: Record<IncidentStatus, string> = {
 };
 
 export function IncidentStatusBadge({ status }: { status: IncidentStatus }) {
-  return <Badge className={cn("border font-medium", STATUS_STYLE[status])}>{INCIDENT_STATUS_LABEL[status]}</Badge>;
+  const { t } = useI18n();
+  return <Badge className={cn("border font-medium", STATUS_STYLE[status])}>{t(INCIDENT_STATUS_LABEL[status])}</Badge>;
 }

@@ -4,6 +4,7 @@ import { ChevronRight, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { useI18n } from "@/lib/i18n/provider";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem } from "@/components/ui/sidebar";
 
@@ -25,6 +26,7 @@ export function NavMain({
   }[];
 }) {
   const pathname = usePathname();
+  const { t } = useI18n();
 
   const DevBadge = () => (
     <div className="ml-auto flex items-center gap-1.5 group-data-[collapsible=icon]:hidden">
@@ -33,14 +35,14 @@ export function NavMain({
         <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.9)] dark:bg-sky-400 dark:shadow-[0_0_10px_rgba(56,189,248,0.85)]"></span>
       </div>
       <span className="rounded border border-blue-200/70 bg-blue-50/70 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:border-sky-700/60 dark:bg-sky-950/50 dark:text-sky-200">
-        On Dev
+        {t("On Dev")}
       </span>
     </div>
   );
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>{label}</SidebarGroupLabel>
+      <SidebarGroupLabel>{t(label)}</SidebarGroupLabel>
 
       <SidebarMenu>
         {items.map((item) => {
@@ -50,10 +52,10 @@ export function NavMain({
           if (!hasSubmenu) {
             return (
               <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton asChild isActive={isItemActive} tooltip={item.title}>
+                <SidebarMenuButton asChild isActive={isItemActive} tooltip={t(item.title)}>
                   <Link href={item.url} className="flex items-center w-full">
                     {item.icon && <item.icon className="h-4 w-4" />}
-                    <span>{item.title}</span>
+                    <span>{t(item.title)}</span>
                     {item.isDevelopment && <DevBadge />}
                   </Link>
                 </SidebarMenuButton>
@@ -67,7 +69,7 @@ export function NavMain({
                 <CollapsibleTrigger asChild>
                   <SidebarMenuButton isActive={isItemActive}>
                     {item.icon && <item.icon className="h-4 w-4" />}
-                    <span>{item.title}</span>
+                    <span>{t(item.title)}</span>
                     {item.isDevelopment ? <DevBadge /> : null}
                     <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                   </SidebarMenuButton>
@@ -82,7 +84,7 @@ export function NavMain({
                         <SidebarMenuSubItem key={subItem.title}>
                           <SidebarMenuSubButton asChild isActive={isSubActive}>
                             <Link href={subItem.url} className="flex w-full items-center">
-                              <span>{subItem.title}</span>
+                              <span>{t(subItem.title)}</span>
                               {subItem.isDevelopment ? <DevBadge /> : null}
                             </Link>
                           </SidebarMenuSubButton>

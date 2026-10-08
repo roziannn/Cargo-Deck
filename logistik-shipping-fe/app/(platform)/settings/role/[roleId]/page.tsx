@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 
 import { getStoredAuthToken } from "@/lib/api/auth";
 import { listCoreMenusByRoleId, updateRoleMenuAccess, updateRoleMenuFunctionAccess, type CoreMenuFunctionItem, type CoreMenuItem } from "@/lib/api/core-menu";
+import { useI18n } from "@/lib/i18n/provider";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -98,6 +99,7 @@ function toggleButtonAccess(nodes: RoleMenuNode[], targetMenuId: string, buttonN
 }
 
 export default function RolePermissionDetailPage() {
+  const { t } = useI18n();
   const params = useParams<{ roleId: string }>();
   const roleId = typeof params?.roleId === "string" ? params.roleId : "";
 
@@ -131,13 +133,13 @@ export default function RolePermissionDetailPage() {
       const response = await listCoreMenusByRoleId(roleId, token);
       setRows(response.map(mapRoleMenuNode));
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Gagal mengambil permission menu.";
+      const message = error instanceof Error ? error.message : t("Gagal mengambil permission menu.");
       toast.error(message);
       setRows([]);
     } finally {
       setIsLoading(false);
     }
-  }, [roleId]);
+  }, [roleId, t]);
 
   useEffect(() => {
     void loadMenus();
@@ -151,10 +153,10 @@ export default function RolePermissionDetailPage() {
     try {
       const token = getStoredAuthToken() ?? undefined;
       await updateRoleMenuAccess(roleId, menuId, { isActive: checked }, token);
-      toast.success(`Menu access ${checked ? "enabled" : "disabled"}.`);
+      toast.success(checked ? t("Menu access enabled.") : t("Menu access disabled."));
     } catch (error) {
       setRows(previousRows);
-      const message = error instanceof Error ? error.message : "Gagal mengubah menu access.";
+      const message = error instanceof Error ? error.message : t("Gagal mengubah menu access.");
       toast.error(message);
     } finally {
       setPendingMenuIds((prev) => prev.filter((id) => id !== menuId));
@@ -163,7 +165,7 @@ export default function RolePermissionDetailPage() {
 
   async function handleToggleButtonAccess(menuId: string, functionNewId: string, buttonName: string, checked: boolean) {
     if (!functionNewId) {
-      toast.error("Function button ID tidak ditemukan.");
+      toast.error(t("Function button ID tidak ditemukan."));
       return;
     }
 
@@ -174,10 +176,12 @@ export default function RolePermissionDetailPage() {
     try {
       const token = getStoredAuthToken() ?? undefined;
       await updateRoleMenuFunctionAccess(roleId, functionNewId, { isActive: checked }, token);
-      toast.success(`Function "${buttonName}" ${checked ? "enabled" : "disabled"}.`);
+      toast.success(
+        checked ? t('Function "{name}" enabled.', { name: buttonName }) : t('Function "{name}" disabled.', { name: buttonName }),
+      );
     } catch (error) {
       setRows(previousRows);
-      const message = error instanceof Error ? error.message : "Gagal mengubah function button access.";
+      const message = error instanceof Error ? error.message : t("Gagal mengubah function button access.");
       toast.error(message);
     } finally {
       setPendingButtonIds((prev) => prev.filter((id) => id !== functionNewId));
@@ -192,13 +196,13 @@ export default function RolePermissionDetailPage() {
         <Button asChild variant="outline" className="w-fit">
           <Link href="/settings/role">
             <ChevronLeft className="h-4 w-4" />
-            Back to Role
+            {t("Back to Role")}
           </Link>
         </Button>
 
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Role Menu Access</h1>
-          <p className="text-sm text-muted-foreground">View menu and function button access for role ID {roleId || "-"}.</p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("Role Menu Access")}</h1>
+          <p className="text-sm text-muted-foreground">{t("View menu and function button access for role ID {id}.", { id: roleId || "-" })}</p>
         </div>
       </div>
 
@@ -206,11 +210,11 @@ export default function RolePermissionDetailPage() {
         <Table containerClassName="rounded-none border-0 bg-transparent">
           <TableHeader>
             <TableRow>
-              <TableHead>Menu Name</TableHead>
-              <TableHead>Parent Menu</TableHead>
-              <TableHead>Sequence</TableHead>
-              <TableHead>Function Buttons</TableHead>
-              <TableHead className="w-40 text-center">Menu Access</TableHead>
+              <TableHead>{t("Menu Name")}</TableHead>
+              <TableHead>{t("Parent Menu")}</TableHead>
+              <TableHead>{t("Sequence")}</TableHead>
+              <TableHead>{t("Function Buttons")}</TableHead>
+              <TableHead className="w-40 text-center">{t("Menu Access")}</TableHead>
             </TableRow>
           </TableHeader>
 
@@ -218,12 +222,12 @@ export default function RolePermissionDetailPage() {
             {rows.map((parent) => (
               <Fragment key={parent.newId || parent.name}>
                 <TableRow className="transition hover:bg-muted/40">
-                  <TableCell>{parent.name}</TableCell>
-                  <TableCell>{parent.parentId ? menuNameById.get(normalizeMenuId(parent.parentId)) || "-" : "-"}</TableCell>
+                  <TableCell>{t(parent.name)}</TableCell>
+                  <TableCell>{parent.parentId ? t(menuNameById.get(normalizeMenuId(parent.parentId)) || "-") : "-"}</TableCell>
                   <TableCell>{parent.seq ?? "-"}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {parent.functionBtn.length === 0 ? (
-                        "No buttons"
+                        t("No buttons")
                       ) : (
                         <div className="flex flex-wrap gap-2">
                           {parent.functionBtn.map((button) => (
@@ -236,7 +240,7 @@ export default function RolePermissionDetailPage() {
                                 disabled={pendingButtonIds.includes(button.newId)}
                                 onCheckedChange={(checked) => void handleToggleButtonAccess(parent.newId, button.newId, button.name, checked === true)}
                               />
-                              <span>{button.name}</span>
+                              <span>{t(button.name)}</span>
                             </label>
                           ))}
                         </div>
@@ -245,7 +249,7 @@ export default function RolePermissionDetailPage() {
                   <TableCell className="align-middle">
                     <div className="flex items-center justify-center gap-2">
                       <Checkbox checked={parent.isActive} disabled={pendingMenuIds.includes(parent.newId)} onCheckedChange={(checked) => void handleToggleMenuAccess(parent.newId, checked === true)} />
-                      <span>{parent.isActive ? "Enabled" : "Disabled"}</span>
+                      <span>{parent.isActive ? t("Enabled") : t("Disabled")}</span>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -255,14 +259,14 @@ export default function RolePermissionDetailPage() {
                     <TableCell>
                       <div className="flex items-center gap-3 pl-6 text-muted-foreground">
                         <Circle className="h-3.5 w-3.5" />
-                        <span className="text-foreground">{child.name}</span>
+                        <span className="text-foreground">{t(child.name)}</span>
                       </div>
                     </TableCell>
-                    <TableCell>{menuNameById.get(normalizeMenuId(child.parentId)) || parent.name}</TableCell>
+                    <TableCell>{t(menuNameById.get(normalizeMenuId(child.parentId)) || parent.name)}</TableCell>
                     <TableCell>{child.seq ?? "-"}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {child.functionBtn.length === 0 ? (
-                        "No buttons"
+                        t("No buttons")
                       ) : (
                         <div className="flex flex-wrap gap-2">
                           {child.functionBtn.map((button) => (
@@ -275,7 +279,7 @@ export default function RolePermissionDetailPage() {
                                 disabled={pendingButtonIds.includes(button.newId)}
                                 onCheckedChange={(checked) => void handleToggleButtonAccess(child.newId, button.newId, button.name, checked === true)}
                               />
-                              <span>{button.name}</span>
+                              <span>{t(button.name)}</span>
                             </label>
                           ))}
                         </div>
@@ -284,7 +288,7 @@ export default function RolePermissionDetailPage() {
                     <TableCell className="align-middle">
                       <div className="flex items-center justify-center gap-2">
                         <Checkbox checked={child.isActive} disabled={pendingMenuIds.includes(child.newId)} onCheckedChange={(checked) => void handleToggleMenuAccess(child.newId, checked === true)} />
-                        <span>{child.isActive ? "Enabled" : "Disabled"}</span>
+                        <span>{child.isActive ? t("Enabled") : t("Disabled")}</span>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -295,7 +299,7 @@ export default function RolePermissionDetailPage() {
             {isLoading && (
               <TableRow>
                 <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
-                  Loading data...
+                  {t("Loading data...")}
                 </TableCell>
               </TableRow>
             )}
@@ -303,7 +307,7 @@ export default function RolePermissionDetailPage() {
             {!isLoading && rows.length === 0 && (
               <TableRow>
                 <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
-                  No data found
+                  {t("No data found")}
                 </TableCell>
               </TableRow>
             )}

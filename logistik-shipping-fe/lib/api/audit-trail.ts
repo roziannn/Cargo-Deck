@@ -1,4 +1,5 @@
 import { apiFetch, apiPath } from "@/lib/api-client";
+import { localeTag } from "@/lib/i18n/locale";
 
 export type AuditActivity = "LOGIN_SUCCESS" | "LOGIN_FAILED" | "LOGOUT" | "CREATE" | "UPDATE" | "STATUS_CHANGE" | "ACCESS_CHANGE" | "PASSWORD_CHANGE" | "DOWNLOAD";
 
@@ -14,7 +15,11 @@ export const AUDIT_ACTIVITY_LABEL: Record<AuditActivity, string> = {
   DOWNLOAD: "Download Report",
 };
 
-export const auditActivityLabel = (activity: string) => AUDIT_ACTIVITY_LABEL[activity as AuditActivity] ?? activity;
+/** `t` translates the label; pass it from components (and the report generator) so the label follows the chosen language. */
+export const auditActivityLabel = (activity: string, t?: (text: string) => string) => {
+  const label = AUDIT_ACTIVITY_LABEL[activity as AuditActivity];
+  return label ? (t ? t(label) : label) : activity;
+};
 
 export type AuditChange = { field: string; label: string; from: string; to: string };
 
@@ -69,11 +74,11 @@ export const exportAuditTrail = (filters: AuditFilters & { format: "pdf" | "xlsx
 
 /** Tanggal "08 Okt 2026" and jam "09.32.15", in the application time zone. */
 export function formatAuditDate(iso: string, timeZone: string) {
-  return new Date(iso).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric", timeZone });
+  return new Date(iso).toLocaleDateString(localeTag(), { day: "2-digit", month: "short", year: "numeric", timeZone });
 }
 
 export function formatAuditTime(iso: string, timeZone: string) {
-  return new Date(iso).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone });
+  return new Date(iso).toLocaleTimeString(localeTag(), { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone });
 }
 
 const ZONE_LABEL: Record<string, string> = { "Asia/Jakarta": "WIB", "Asia/Makassar": "WITA", "Asia/Jayapura": "WIT" };

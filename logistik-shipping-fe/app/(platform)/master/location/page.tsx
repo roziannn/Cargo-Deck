@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getStoredAuthToken } from "@/lib/api/auth";
 import { createMstLocation, listMstLocations, updateMstLocation, type LocationType, type MstLocationItem } from "@/lib/api/mst-location";
+import { useI18n } from "@/lib/i18n/provider";
 
 type FormState = {
   code: string;
@@ -43,6 +44,7 @@ const EMPTY_FORM: FormState = {
 };
 
 export default function LocationPage() {
+  const { t } = useI18n();
   const [data, setData] = useState<MstLocationItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -59,12 +61,12 @@ export default function LocationPage() {
     try {
       setData(await listMstLocations(getStoredAuthToken() ?? undefined));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Gagal mengambil data location.");
+      toast.error(error instanceof Error ? error.message : t("Gagal mengambil data location."));
       setData([]);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const id = window.setTimeout(() => void load(), 0);
@@ -108,7 +110,7 @@ export default function LocationPage() {
 
   async function handleSave() {
     if (!form.code.trim() || !form.name.trim()) {
-      toast.error("Code dan Name wajib diisi.");
+      toast.error(t("Code dan Name wajib diisi."));
       return;
     }
 
@@ -119,7 +121,7 @@ export default function LocationPage() {
       const latitude = toCoordinate(form.latitude);
       const longitude = toCoordinate(form.longitude);
       if ((latitude !== null && !Number.isFinite(latitude)) || (longitude !== null && !Number.isFinite(longitude))) {
-        toast.error("Latitude dan Longitude harus berupa angka.");
+        toast.error(t("Latitude dan Longitude harus berupa angka."));
         setIsSaving(false);
         return;
       }
@@ -127,11 +129,11 @@ export default function LocationPage() {
       if (editingNewId) await updateMstLocation(editingNewId, payload, token);
       else await createMstLocation(payload, token);
 
-      toast.success(`Location "${payload.name}" berhasil disimpan.`);
+      toast.success(t('Location "{name}" berhasil disimpan.', { name: payload.name }));
       setOpenForm(false);
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Gagal menyimpan location.");
+      toast.error(error instanceof Error ? error.message : t("Gagal menyimpan location."));
     } finally {
       setIsSaving(false);
     }
@@ -142,8 +144,8 @@ export default function LocationPage() {
       <Toaster position="top-center" />
 
       <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Master Location</h1>
-        <p className="text-sm text-muted-foreground">Warehouses (origin) and customer / DC locations (destination) used by shipping plans.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("Master Location")}</h1>
+        <p className="text-sm text-muted-foreground">{t("Warehouses (origin) and customer / DC locations (destination) used by shipping plans.")}</p>
       </div>
 
       <div className="flex items-center justify-between">
@@ -155,12 +157,12 @@ export default function LocationPage() {
               setSearch(e.target.value);
               setPage(1);
             }}
-            placeholder="Search code, name, type, city..."
+            placeholder={t("Search code, name, type, city...")}
             className="w-full rounded-md px-9 py-2 text-sm"
           />
         </div>
         <Button onClick={openCreate} className="font-medium">
-          + Add Location
+          {t("+ Add Location")}
         </Button>
       </div>
 
@@ -168,14 +170,14 @@ export default function LocationPage() {
         <Table containerClassName="rounded-none border-0 bg-transparent">
           <TableHeader>
             <TableRow>
-              <TableHead>Code</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>City</TableHead>
-              <TableHead>Province</TableHead>
-              <TableHead>Contact</TableHead>
-              <TableHead>Is Active</TableHead>
-              <TableHead className="w-24 text-center">Actions</TableHead>
+              <TableHead>{t("Code")}</TableHead>
+              <TableHead>{t("Name")}</TableHead>
+              <TableHead>{t("Type")}</TableHead>
+              <TableHead>{t("City")}</TableHead>
+              <TableHead>{t("Province")}</TableHead>
+              <TableHead>{t("Contact")}</TableHead>
+              <TableHead>{t("Is Active")}</TableHead>
+              <TableHead className="w-24 text-center">{t("Actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -184,16 +186,16 @@ export default function LocationPage() {
                 <TableCell className="font-medium">{row.code}</TableCell>
                 <TableCell>{row.name}</TableCell>
                 <TableCell>
-                  <Badge variant="outline">{row.type === "WAREHOUSE" ? "Warehouse" : "Customer"}</Badge>
+                  <Badge variant="outline">{row.type === "WAREHOUSE" ? t("Warehouse") : t("Customer")}</Badge>
                 </TableCell>
                 <TableCell>{row.city || "-"}</TableCell>
                 <TableCell>{row.province || "-"}</TableCell>
                 <TableCell>{[row.contactName, row.contactPhone].filter(Boolean).join(" · ") || "-"}</TableCell>
                 <TableCell>
                   {row.isActive ? (
-                    <Badge className="border border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Active</Badge>
+                    <Badge className="border border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">{t("Active")}</Badge>
                   ) : (
-                    <Badge variant="secondary">Inactive</Badge>
+                    <Badge variant="secondary">{t("Inactive")}</Badge>
                   )}
                 </TableCell>
                 <TableCell>
@@ -206,7 +208,7 @@ export default function LocationPage() {
             {(isLoading || paginated.length === 0) && (
               <TableRow>
                 <TableCell colSpan={8} className="py-6 text-center text-muted-foreground">
-                  {isLoading ? "Loading data..." : "No data found"}
+                  {isLoading ? t("Loading data...") : t("No data found")}
                 </TableCell>
               </TableRow>
             )}
@@ -215,14 +217,18 @@ export default function LocationPage() {
 
         <div className="flex flex-col gap-2 border-t px-3 py-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>
-            Showing {Math.min(startIndex + 1, filtered.length || 0)} to {Math.min(startIndex + rowsPerPage, filtered.length)} of {filtered.length} entries
+            {t("Showing {from} to {to} of {total} entries", {
+              from: Math.min(startIndex + 1, filtered.length || 0),
+              to: Math.min(startIndex + rowsPerPage, filtered.length),
+              total: filtered.length,
+            })}
           </span>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="icon" className="h-8 w-8" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="min-w-24 text-center">
-              Page {page} of {totalPages}
+              {t("Page {page} of {total}", { page, total: totalPages })}
             </span>
             <Button variant="outline" size="icon" className="h-8 w-8" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>
               <ChevronRight className="h-4 w-4" />
@@ -234,71 +240,71 @@ export default function LocationPage() {
       <Dialog open={openForm} onOpenChange={setOpenForm}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingNewId ? "Edit Location" : "Add Location"}</DialogTitle>
+            <DialogTitle>{editingNewId ? t("Edit Location") : t("Add Location")}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label>Code</Label>
-                <Input value={form.code} onChange={(e) => setField("code", e.target.value)} placeholder="e.g. DC-SBY" />
+                <Label>{t("Code")}</Label>
+                <Input value={form.code} onChange={(e) => setField("code", e.target.value)} placeholder={t("e.g. DC-SBY")} />
               </div>
               <div className="space-y-1">
-                <Label>Type</Label>
+                <Label>{t("Type")}</Label>
                 <select
                   value={form.type}
                   onChange={(e) => setField("type", e.target.value as LocationType)}
                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
-                  <option value="WAREHOUSE">Warehouse</option>
-                  <option value="CUSTOMER">Customer / DC</option>
+                  <option value="WAREHOUSE">{t("Warehouse")}</option>
+                  <option value="CUSTOMER">{t("Customer / DC")}</option>
                 </select>
               </div>
             </div>
             <div className="space-y-1">
-              <Label>Name</Label>
-              <Input value={form.name} onChange={(e) => setField("name", e.target.value)} placeholder="Input name" />
+              <Label>{t("Name")}</Label>
+              <Input value={form.name} onChange={(e) => setField("name", e.target.value)} placeholder={t("Input name")} />
             </div>
             <div className="space-y-1">
-              <Label>Address</Label>
-              <Input value={form.address} onChange={(e) => setField("address", e.target.value)} placeholder="Street address" />
+              <Label>{t("Address")}</Label>
+              <Input value={form.address} onChange={(e) => setField("address", e.target.value)} placeholder={t("Street address")} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label>City</Label>
+                <Label>{t("City")}</Label>
                 <Input value={form.city} onChange={(e) => setField("city", e.target.value)} />
               </div>
               <div className="space-y-1">
-                <Label>Province</Label>
+                <Label>{t("Province")}</Label>
                 <Input value={form.province} onChange={(e) => setField("province", e.target.value)} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label>Contact Name</Label>
+                <Label>{t("Contact Name")}</Label>
                 <Input value={form.contactName} onChange={(e) => setField("contactName", e.target.value)} />
               </div>
               <div className="space-y-1">
-                <Label>Contact Phone</Label>
+                <Label>{t("Contact Phone")}</Label>
                 <Input value={form.contactPhone} onChange={(e) => setField("contactPhone", e.target.value)} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label>Latitude</Label>
-                <Input value={form.latitude} onChange={(e) => setField("latitude", e.target.value)} placeholder="e.g. -6.2250" />
+                <Label>{t("Latitude")}</Label>
+                <Input value={form.latitude} onChange={(e) => setField("latitude", e.target.value)} placeholder={t("e.g. -6.2250")} />
               </div>
               <div className="space-y-1">
-                <Label>Longitude</Label>
-                <Input value={form.longitude} onChange={(e) => setField("longitude", e.target.value)} placeholder="e.g. 106.9004" />
+                <Label>{t("Longitude")}</Label>
+                <Input value={form.longitude} onChange={(e) => setField("longitude", e.target.value)} placeholder={t("e.g. 106.9004")} />
               </div>
             </div>
-            <p className="-mt-2 text-xs text-muted-foreground">Koordinat dipakai untuk menghitung estimasi jarak dan biaya kirim. Boleh dikosongkan, jarak lalu diisi manual saat booking.</p>
+            <p className="-mt-2 text-xs text-muted-foreground">{t("Koordinat dipakai untuk menghitung estimasi jarak dan biaya kirim. Boleh dikosongkan, jarak lalu diisi manual saat booking.")}</p>
             {editingNewId && (
               <div className="flex items-center justify-between rounded-md border p-3">
                 <div className="space-y-0.5">
-                  <Label>Is Active</Label>
-                  <p className="text-xs text-muted-foreground">Inactive locations can no longer be chosen in a shipping plan.</p>
+                  <Label>{t("Is Active")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("Inactive locations can no longer be chosen in a shipping plan.")}</p>
                 </div>
                 <Switch checked={form.isActive} onCheckedChange={(checked) => setField("isActive", checked)} disabled={isSaving} />
               </div>
@@ -307,10 +313,10 @@ export default function LocationPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenForm(false)} disabled={isSaving}>
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button onClick={() => void handleSave()} disabled={isSaving}>
-              {isSaving ? "Saving..." : editingNewId ? "Save" : "Add"}
+              {isSaving ? t("Saving...") : editingNewId ? t("Save") : t("Add")}
             </Button>
           </DialogFooter>
         </DialogContent>

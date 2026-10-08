@@ -1,3 +1,4 @@
+import { clearAccessCache } from "@/lib/server/permissions";
 import { activeLabel, auditCreate, auditUpdate, writeAudit, yesNo, type AuditField } from "@/lib/server/audit";
 import { coreRoleRepository } from "@/lib/server/repositories/core-role.repository";
 import { HttpError, optGuid, optInt, optString, requireGuid, requireString } from "@/lib/server/http";
@@ -153,6 +154,7 @@ export const coreMenuService = {
     if (input.parentId && key(input.parentId) === key(newId)) throw new HttpError(400, "A menu cannot be its own parent.");
     const before = (await coreMenuRepository.getMenus()).find((m) => key(m.newId) === key(newId));
     const ok = await coreMenuRepository.updateMenu(newId, { ...input, updatedBy: requireString(body.updatedBy, "updatedBy") });
+    clearAccessCache();
     if (!ok || !before) throw new HttpError(404, "Menu not found.");
     await auditUpdate({ module: "Menu", entityType: "Menu", ref: before.name, before, after: input, fields: MENU_FIELDS });
   },
@@ -179,6 +181,7 @@ export const coreMenuService = {
     const [role, menus, current] = await Promise.all([coreRoleRepository.getByNewId(roleNewId), coreMenuRepository.getMenus(), coreMenuRepository.getRoleMenus(roleNewId)]);
     const was = current.find((r) => key(r.menuNewId) === key(menuNewId) && r.functionNewId === null)?.isActive ?? false;
     await coreMenuRepository.setMenuAccess(roleNewId, menuNewId, body.isActive === true);
+    clearAccessCache();
     if (was !== (body.isActive === true)) {
       const menu = menus.find((m) => key(m.newId) === key(menuNewId));
       await writeAudit({
@@ -199,6 +202,7 @@ export const coreMenuService = {
     const [role, functions, current] = await Promise.all([coreRoleRepository.getByNewId(roleNewId), coreMenuRepository.getFunctions(), coreMenuRepository.getRoleMenus(roleNewId)]);
     const was = current.find((r) => r.functionNewId !== null && key(r.functionNewId) === key(functionNewId))?.isActiveBtn ?? false;
     await coreMenuRepository.setFunctionAccess(roleNewId, menuNewId, functionNewId, body.isActive === true);
+    clearAccessCache();
     if (was !== (body.isActive === true)) {
       const fn = functions.find((x) => key(x.newId) === key(functionNewId));
       await writeAudit({

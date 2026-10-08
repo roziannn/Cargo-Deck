@@ -18,8 +18,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Toaster, toast } from "react-hot-toast";
 import { Check, ChevronLeft, ChevronRight, CircleCheck, LoaderCircle, Plus, Search, Settings, SquarePen, Trash2 } from "lucide-react";
 import { DateFormat } from "@/utils/date-format";
+import { useI18n } from "@/lib/i18n/provider";
 
 export default function RoleListPage() {
+  const { t } = useI18n();
   const [rows, setRows] = useState<CoreRoleItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -48,13 +50,13 @@ export default function RoleListPage() {
       const response = await listCoreRoles(token);
       setRows(response);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Gagal mengambil data role.";
+      const message = error instanceof Error ? error.message : t("Gagal mengambil data role.");
       toast.error(message);
       setRows([]);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadRoles();
@@ -114,13 +116,13 @@ export default function RoleListPage() {
       const response = await listCoreRoleClaimsByRoleId(roleId, token);
       setSelectedUsers(response);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Gagal mengambil data user role.";
+      const message = error instanceof Error ? error.message : t("Gagal mengambil data user role.");
       toast.error(message);
       setSelectedUsers([]);
     } finally {
       setIsLoadingClaims(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!openForm || mode !== "edit" || !selected?.newId) return;
@@ -131,12 +133,12 @@ export default function RoleListPage() {
     const normalizedName = name.trim();
 
     if (!normalizedName) {
-      toast.error("Name wajib diisi.");
+      toast.error(t("Name wajib diisi."));
       return;
     }
 
     if (!actor) {
-      toast.error("User login tidak ditemukan.");
+      toast.error(t("User login tidak ditemukan."));
       return;
     }
 
@@ -153,11 +155,11 @@ export default function RoleListPage() {
           token,
         );
         setPage(1);
-        toast.success(`Role "${normalizedName}" berhasil disimpan.`);
+        toast.success(t('Role "{name}" berhasil disimpan.', { name: normalizedName }));
       } else {
         const targetId = selected?.newId;
         if (!targetId) {
-          throw new Error("ID role untuk update tidak ditemukan.");
+          throw new Error(t("ID role untuk update tidak ditemukan."));
         }
 
         await updateCoreRole(
@@ -181,14 +183,14 @@ export default function RoleListPage() {
           },
           token,
         );
-        toast.success(`Perubahan role "${normalizedName}" berhasil disimpan.`);
+        toast.success(t('Perubahan role "{name}" berhasil disimpan.', { name: normalizedName }));
       }
 
       await loadRoles();
       setOpenForm(false);
       resetForm();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Gagal menyimpan role.";
+      const message = error instanceof Error ? error.message : t("Gagal menyimpan role.");
       toast.error(message);
     } finally {
       setIsSaving(false);
@@ -210,7 +212,7 @@ export default function RoleListPage() {
       const response = await searchDataHrisNameLov(keyword, token);
       setUserOptions(response);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Gagal mencari user.";
+      const message = error instanceof Error ? error.message : t("Gagal mencari user.");
       toast.error(message);
       setUserOptions([]);
     } finally {
@@ -223,12 +225,12 @@ export default function RoleListPage() {
 
     const roleId = selected?.newId;
     if (!roleId) {
-      toast.error("ID role tidak ditemukan.");
+      toast.error(t("ID role tidak ditemukan."));
       return;
     }
 
     if (!selectedUser?.userPrincipalName) {
-      toast.error("Pilih user terlebih dahulu.");
+      toast.error(t("Pilih user terlebih dahulu."));
       return;
     }
 
@@ -247,13 +249,13 @@ export default function RoleListPage() {
       );
 
       await loadRoleClaims(roleId);
-      toast.success(`User "${selectedUser.name}" berhasil ditambahkan.`);
+      toast.success(t('User "{name}" berhasil ditambahkan.', { name: selectedUser.name }));
       setSelectedUser(null);
       setUserSearch("");
       setUserOptions([]);
       setOpenUserSelect(false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Gagal menambahkan user ke role.";
+      const message = error instanceof Error ? error.message : t("Gagal menambahkan user ke role.");
       toast.error(message);
     } finally {
       setIsAddingClaim(false);
@@ -269,8 +271,8 @@ export default function RoleListPage() {
       <Toaster position="top-center" />
 
       <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Role</h1>
-        <p className="text-sm text-muted-foreground">Manage core role data for manufacturing process control and monitoring.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("Role")}</h1>
+        <p className="text-sm text-muted-foreground">{t("Manage core role data for manufacturing process control and monitoring.")}</p>
       </div>
 
       <div className="flex items-center justify-between gap-4">
@@ -282,14 +284,14 @@ export default function RoleListPage() {
               setSearch(e.target.value);
               setPage(1);
             }}
-            placeholder="Search role..."
+            placeholder={t("Search role...")}
             className="pl-9"
           />
         </div>
 
         <Button className="font-medium" onClick={openCreate}>
           <Plus className="h-4 w-4" />
-          Add Role
+          {t("Add Role")}
         </Button>
       </div>
 
@@ -297,11 +299,11 @@ export default function RoleListPage() {
         <Table containerClassName="rounded-none border-0 bg-transparent">
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Created By</TableHead>
-              <TableHead>Created Date</TableHead>
-              <TableHead className="w-24 text-center">Actions</TableHead>
+              <TableHead>{t("Name")}</TableHead>
+              <TableHead>{t("Status")}</TableHead>
+              <TableHead>{t("Created By")}</TableHead>
+              <TableHead>{t("Created Date")}</TableHead>
+              <TableHead className="w-24 text-center">{t("Actions")}</TableHead>
             </TableRow>
           </TableHeader>
 
@@ -313,10 +315,10 @@ export default function RoleListPage() {
                   {row.isActive ? (
                     <Badge className="gap-1.5 border border-sky-200 bg-sky-100 text-sky-700 hover:bg-sky-100 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300">
                       <CircleCheck className="h-3 w-3" />
-                      Active
+                      {t("Active")}
                     </Badge>
                   ) : (
-                    <Badge variant="secondary">Inactive</Badge>
+                    <Badge variant="secondary">{t("Inactive")}</Badge>
                   )}
                 </TableCell>
                 <TableCell>{row.createdBy || "-"}</TableCell>
@@ -324,7 +326,7 @@ export default function RoleListPage() {
                 <TableCell>
                   <div className="flex items-center justify-center gap-3">
                     <SquarePen className="h-4 w-4 cursor-pointer text-muted-foreground transition hover:text-blue-600" onClick={() => openEdit(row)} />
-                    <Link href={`/settings/role/${row.newId}`} className="text-muted-foreground transition hover:text-amber-600" aria-label={`Open permissions for ${row.name}`}>
+                    <Link href={`/settings/role/${row.newId}`} className="text-muted-foreground transition hover:text-amber-600" aria-label={t("Open permissions for {name}", { name: row.name })}>
                       <Settings className="h-4 w-4" />
                     </Link>
                   </div>
@@ -335,7 +337,7 @@ export default function RoleListPage() {
             {isLoading && (
               <TableRow>
                 <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
-                  Loading data...
+                  {t("Loading data...")}
                 </TableCell>
               </TableRow>
             )}
@@ -343,7 +345,7 @@ export default function RoleListPage() {
             {!isLoading && paginated.length === 0 && (
               <TableRow>
                 <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
-                  No data found
+                  {t("No data found")}
                 </TableCell>
               </TableRow>
             )}
@@ -352,7 +354,7 @@ export default function RoleListPage() {
 
         <div className="flex flex-col gap-2 border-t px-3 py-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>
-            Showing {fromEntry} to {toEntry} of {totalEntries} entries
+            {t("Showing {from} to {to} of {total} entries", { from: fromEntry, to: toEntry, total: totalEntries })}
           </span>
 
           <div className="flex items-center gap-2">
@@ -360,7 +362,7 @@ export default function RoleListPage() {
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="min-w-24 text-center text-foreground">
-              Page {page} of {totalPages || 1}
+              {t("Page {page} of {total}", { page, total: totalPages || 1 })}
             </span>
             <Button
               variant="outline"
@@ -386,35 +388,35 @@ export default function RoleListPage() {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{mode === "create" ? "Add Role" : "Edit Role"}</DialogTitle>
+            <DialogTitle>{mode === "create" ? t("Add Role") : t("Edit Role")}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-1">
-              <Label htmlFor="role-name">Name</Label>
-              <Input id="role-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Input role name" maxLength={256} />
+              <Label htmlFor="role-name">{t("Name")}</Label>
+              <Input id="role-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Input role name")} maxLength={256} />
             </div>
 
             {mode === "edit" && (
               <div className="space-y-2">
-                <Label>Name</Label>
+                <Label>{t("Name")}</Label>
                 <div className="flex gap-2">
                   <Popover open={openUserSelect} onOpenChange={setOpenUserSelect}>
                     <PopoverTrigger asChild>
                       <Button variant="outline" role="combobox" className="flex-1 justify-between font-normal">
-                        {selectedUser ? selectedUser.name : "Choose a user..."}
+                        {selectedUser ? selectedUser.name : t("Choose a user...")}
                       </Button>
                     </PopoverTrigger>
 
                     <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
                       <Command shouldFilter={false}>
-                        <CommandInput placeholder="Search name..." value={userSearch} onValueChange={handleSearchUsers} />
+                        <CommandInput placeholder={t("Search name...")} value={userSearch} onValueChange={handleSearchUsers} />
                         <CommandList>
                           {isSearchingUsers ? (
-                            <div className="px-3 py-2 text-sm text-muted-foreground">Searching users...</div>
+                            <div className="px-3 py-2 text-sm text-muted-foreground">{t("Searching users...")}</div>
                           ) : (
                             <>
-                              <CommandEmpty>No user found.</CommandEmpty>
+                              <CommandEmpty>{t("No user found.")}</CommandEmpty>
                               <CommandGroup>
                                 {userOptions.map((user) => (
                                   <CommandItem
@@ -441,19 +443,19 @@ export default function RoleListPage() {
                   </Popover>
 
                   <Button type="button" onClick={() => void handleAddUserClaim()} disabled={!selectedUser || isAddingClaim}>
-                    {isAddingClaim ? "Adding..." : "Add"}
+                    {isAddingClaim ? t("Adding...") : t("Add")}
                   </Button>
                 </div>
 
                 <div className="space-y-2 pt-2">
-                  <p className="text-sm font-medium">Selected Users</p>
+                  <p className="text-sm font-medium">{t("Selected Users")}</p>
                   {isLoadingClaims ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <LoaderCircle className="h-4 w-4 animate-spin" />
-                      Loading selected users...
+                      {t("Loading selected users...")}
                     </div>
                   ) : selectedUsers.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No user selected.</p>
+                    <p className="text-sm text-muted-foreground">{t("No user selected.")}</p>
                   ) : (
                     selectedUsers.map((user) => (
                       <div key={`${user.roleId}-${user.userPrincipalName}`} className="flex items-center justify-between rounded-md border px-3 py-2">
@@ -467,7 +469,7 @@ export default function RoleListPage() {
                           size="icon"
                           className="text-muted-foreground hover:text-destructive"
                           onClick={() => handleRemoveSelectedUser(user.userPrincipalName)}
-                          aria-label={`Remove ${user.employeeName || user.userPrincipalName}`}
+                          aria-label={t("Remove {name}", { name: user.employeeName || user.userPrincipalName })}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -480,8 +482,8 @@ export default function RoleListPage() {
 
             <div className="flex items-center justify-between rounded-md border p-3">
               <div className="space-y-0.5">
-                <Label htmlFor="role-active">Is Active</Label>
-                <p className="text-xs text-muted-foreground">{isActive ? "Role aktif" : "Role nonaktif"}</p>
+                <Label htmlFor="role-active">{t("Is Active")}</Label>
+                <p className="text-xs text-muted-foreground">{isActive ? t("Role aktif") : t("Role nonaktif")}</p>
               </div>
               <Switch id="role-active" checked={isActive} onCheckedChange={setIsActive} />
             </div>
@@ -489,10 +491,10 @@ export default function RoleListPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenForm(false)} disabled={isSaving}>
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button onClick={() => void handleSave()} disabled={isSaving}>
-              {isSaving ? "Saving..." : mode === "create" ? "Save" : "Update"}
+              {isSaving ? t("Saving...") : mode === "create" ? t("Save") : t("Update")}
             </Button>
           </DialogFooter>
         </DialogContent>

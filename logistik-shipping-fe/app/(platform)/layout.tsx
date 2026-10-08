@@ -5,6 +5,8 @@ import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { DarkModeToggle } from "@/components/darkmode-toggle";
+import { LanguageToggle } from "@/components/language-toggle";
+import { useI18n } from "@/lib/i18n/provider";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -20,6 +22,7 @@ function titleCaseFromSegment(segment: string) {
 
 export default function PlatformLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { t } = useI18n();
 
   const segments = React.useMemo(() => {
     if (!pathname) return [];
@@ -29,7 +32,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
   const breadcrumbs = segments.map((segment, index) => {
     const href = "/" + segments.slice(0, index + 1).join("/");
     return {
-      label: titleCaseFromSegment(segment),
+      label: t(titleCaseFromSegment(segment)),
       href,
       isLast: index === segments.length - 1,
     };
@@ -59,6 +62,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
 
           <div className="flex items-center gap-1">
             <NotificationBell />
+            <LanguageToggle />
             <DarkModeToggle />
           </div>
         </header>
@@ -66,10 +70,10 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
         <main className="flex min-w-0 flex-1 flex-col gap-4 overflow-x-hidden p-4 pt-0">{children}</main>
         <footer className="border-t border-border/70 bg-background px-4 py-5 text-sm text-muted-foreground">
           <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <p>© 2026 Logistics Shipping System.</p>
+            <p>{t("© 2026 Logistics Shipping System.")}</p>
             <div className="flex items-center gap-2 text-left sm:text-right">
-              <p className="text-foreground">Version 1.0.0</p>
-              <p>Made with ❤️ for Logistics Team</p>
+              <p className="text-foreground">{t("Version {version}", { version: "1.0.0" })}</p>
+              <p>{t("Made with ❤️ for Logistics Team")}</p>
             </div>
           </div>
         </footer>

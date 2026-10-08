@@ -26,6 +26,7 @@ import {
   type ShippingIncident,
 } from "@/lib/api/shipping-incident";
 import { formatPlanDate, formatRupiah } from "@/lib/api/shipping-plan";
+import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 
 const FILTERS: ("ALL" | "ACTIVE" | IncidentStatus)[] = [
@@ -40,6 +41,7 @@ const FILTERS: ("ALL" | "ACTIVE" | IncidentStatus)[] = [
 const today = () => new Date().toISOString().slice(0, 10);
 
 export default function ShippingIncidentListPage() {
+  const { t } = useI18n();
   const [data, setData] = useState<ShippingIncident[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -54,10 +56,11 @@ export default function ShippingIncidentListPage() {
         toast.error(
           error instanceof Error
             ? error.message
-            : "Gagal mengambil data insiden.",
+            : t("Gagal mengambil data insiden."),
         ),
       )
       .finally(() => setIsLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filtered = useMemo(() => {
@@ -73,10 +76,10 @@ export default function ShippingIncidentListPage() {
           row.planNo,
           row.description,
           row.carrierName ?? "",
-          INCIDENT_TYPE_LABEL[row.type],
+          t(INCIDENT_TYPE_LABEL[row.type]),
         ].some((v) => v.toLowerCase().includes(keyword)),
     );
-  }, [data, search, filter]);
+  }, [data, search, filter, t]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
   const startIndex = (page - 1) * rowsPerPage;
@@ -88,11 +91,10 @@ export default function ShippingIncidentListPage() {
 
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">
-          Insiden &amp; Klaim
+          {t("Insiden & Klaim")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Masalah selama pengiriman: terlambat, barang rusak atau kurang, suhu,
-          retur. Klik insiden untuk menanganinya.
+          {t("Masalah selama pengiriman: terlambat, barang rusak atau kurang, suhu, retur. Klik insiden untuk menanganinya.")}
         </p>
       </div>
 
@@ -106,7 +108,7 @@ export default function ShippingIncidentListPage() {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              placeholder="Cari no insiden, plan, carrier, kejadian..."
+              placeholder={t("Cari no insiden, plan, carrier, kejadian...")}
               className="w-full rounded-md px-9 py-2 text-sm"
             />
           </div>
@@ -121,17 +123,17 @@ export default function ShippingIncidentListPage() {
             {FILTERS.map((f) => (
               <option key={f} value={f}>
                 {f === "ALL"
-                  ? "Semua status"
+                  ? t("Semua status")
                   : f === "ACTIVE"
-                    ? "Belum selesai"
-                    : INCIDENT_STATUS_LABEL[f]}
+                    ? t("Belum selesai")
+                    : t(INCIDENT_STATUS_LABEL[f])}
               </option>
             ))}
           </select>
         </div>
         <Button asChild className="font-medium">
           <Link href="/shipping/incident/create">
-            <Plus className="mr-2 h-4 w-4" /> Lapor Insiden
+            <Plus className="mr-2 h-4 w-4" /> {t("Lapor Insiden")}
           </Link>
         </Button>
       </div>
@@ -140,15 +142,15 @@ export default function ShippingIncidentListPage() {
         <Table containerClassName="rounded-none border-0 bg-transparent">
           <TableHeader>
             <TableRow>
-              <TableHead>No Insiden</TableHead>
-              <TableHead>Plan</TableHead>
-              <TableHead>Jenis</TableHead>
-              <TableHead>Kejadian</TableHead>
-              <TableHead>Tanggal</TableHead>
-              <TableHead>Estimasi Selesai</TableHead>
-              <TableHead className="text-right">Klaim</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="w-20 text-center">Actions</TableHead>
+              <TableHead>{t("No Insiden")}</TableHead>
+              <TableHead>{t("Plan")}</TableHead>
+              <TableHead>{t("Jenis")}</TableHead>
+              <TableHead>{t("Kejadian")}</TableHead>
+              <TableHead>{t("Tanggal")}</TableHead>
+              <TableHead>{t("Estimasi Selesai")}</TableHead>
+              <TableHead className="text-right">{t("Klaim")}</TableHead>
+              <TableHead>{t("Status")}</TableHead>
+              <TableHead className="w-20 text-center">{t("Actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -175,7 +177,7 @@ export default function ShippingIncidentListPage() {
                       {row.planNo}
                     </Link>
                   </TableCell>
-                  <TableCell>{INCIDENT_TYPE_LABEL[row.type]}</TableCell>
+                  <TableCell>{t(INCIDENT_TYPE_LABEL[row.type])}</TableCell>
                   <TableCell
                     className="max-w-64 truncate"
                     title={row.description}
@@ -187,7 +189,7 @@ export default function ShippingIncidentListPage() {
                     className={cn(overdue && "font-medium text-red-600")}
                   >
                     {formatPlanDate(row.targetDate)}
-                    {overdue && " (lewat)"}
+                    {overdue && ` ${t("(lewat)")}`}
                   </TableCell>
                   <TableCell className="text-right">
                     {row.claimAmount ? formatRupiah(row.claimAmount) : "-"}
@@ -199,7 +201,7 @@ export default function ShippingIncidentListPage() {
                     <div className="flex items-center justify-center">
                       <Link
                         href={`/shipping/incident/${row.newId}`}
-                        aria-label={`Tangani ${row.incidentNo}`}
+                        aria-label={t("Tangani {no}", { no: row.incidentNo })}
                       >
                         <Eye className="h-4 w-4 text-muted-foreground hover:text-blue-600" />
                       </Link>
@@ -214,7 +216,7 @@ export default function ShippingIncidentListPage() {
                   colSpan={9}
                   className="py-6 text-center text-muted-foreground"
                 >
-                  {isLoading ? "Loading data..." : "Tidak ada insiden"}
+                  {isLoading ? t("Loading data...") : t("Tidak ada insiden")}
                 </TableCell>
               </TableRow>
             )}
@@ -223,9 +225,11 @@ export default function ShippingIncidentListPage() {
 
         <div className="flex flex-col gap-2 border-t px-3 py-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>
-            Showing {Math.min(startIndex + 1, filtered.length || 0)} to{" "}
-            {Math.min(startIndex + rowsPerPage, filtered.length)} of{" "}
-            {filtered.length} entries
+            {t("Showing {from} to {to} of {total} entries", {
+              from: Math.min(startIndex + 1, filtered.length || 0),
+              to: Math.min(startIndex + rowsPerPage, filtered.length),
+              total: filtered.length,
+            })}
           </span>
           <div className="flex items-center gap-2">
             <Button
@@ -238,7 +242,7 @@ export default function ShippingIncidentListPage() {
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="min-w-24 text-center">
-              Page {page} of {totalPages}
+              {t("Page {page} of {total}", { page, total: totalPages })}
             </span>
             <Button
               variant="outline"

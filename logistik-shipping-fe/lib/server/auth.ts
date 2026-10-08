@@ -1,6 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-const TOKEN_TTL_SECONDS = 8 * 60 * 60;
+export const TOKEN_TTL_SECONDS = 8 * 60 * 60;
+/** The login token is also kept in this cookie so the server can guard page navigations. */
+export const SESSION_COOKIE = "cd_session";
 
 export type TokenPayload = {
   sub: string;

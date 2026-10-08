@@ -8,6 +8,7 @@ import { clearAuthSession, getStoredAuthToken, notifyLogout } from "@/lib/api/au
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useI18n } from "@/lib/i18n/provider";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
 
 function ProfileField({ label, value }: { label: string; value: string }) {
@@ -35,6 +36,7 @@ export function NavUser({
 }) {
   const { isMobile } = useSidebar();
   const router = useRouter();
+  const { t } = useI18n();
   const [openProfile, setOpenProfile] = React.useState(false);
   const displayName = React.useMemo(() => {
     const normalizedName = user.name.trim();
@@ -99,13 +101,13 @@ export function NavUser({
               <DropdownMenuGroup>
                 <DropdownMenuItem onClick={() => setOpenProfile(true)}>
                   <UserCircle />
-                  Profile
+                  {t("Profile")}
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout}>
                 <LogOut />
-                Log out
+                {t("Log out")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -115,8 +117,8 @@ export function NavUser({
       <Dialog open={openProfile} onOpenChange={setOpenProfile}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Profile</DialogTitle>
-            <DialogDescription>Account information for the current logged-in user.</DialogDescription>
+            <DialogTitle>{t("Profile")}</DialogTitle>
+            <DialogDescription>{t("Account information for the current logged-in user.")}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -132,10 +134,10 @@ export function NavUser({
             </div>
 
             <div className="grid gap-3">
-              <ProfileField label="Name" value={user.name?.trim() || displayName} />
+              <ProfileField label={t("Name")} value={user.name?.trim() || displayName} />
               <ProfileField label="Email" value={user.email} />
-              <ProfileField label="Comp Name" value={user.compName?.trim() || "-"} />
-              <ProfileField label="Job Ttl Name" value={user.jobTtlName?.trim() || "-"} />
+              <ProfileField label={t("Company Name")} value={user.compName?.trim() || "-"} />
+              <ProfileField label={t("Job Title")} value={user.jobTtlName?.trim() || "-"} />
               <ProfileField label="NIK" value={user.nik?.trim() || user.username?.trim() || "-"} />
             </div>
           </div>

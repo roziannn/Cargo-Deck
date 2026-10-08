@@ -15,6 +15,7 @@ import * as XLSX from "xlsx";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useI18n } from "@/lib/i18n/provider";
 
 type Account = {
   id: number;
@@ -35,6 +36,7 @@ type RoleGroup = {
 };
 
 export default function AccountPage() {
+  const { t } = useI18n();
   const data: Account[] = [
     {
       id: 1,
@@ -163,10 +165,10 @@ export default function AccountPage() {
     <div className="p-6 space-y-6 dark:bg-zinc-900 min-h-screen">
        <div className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">
-          Account
+          {t("Account")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Manage account for manufacturing process control and monitoring.
+          {t("Manage account for manufacturing process control and monitoring.")}
         </p>
       </div>
       <div className="flex items-center justify-between">
@@ -178,23 +180,23 @@ export default function AccountPage() {
               setSearch(e.target.value);
               setPage(1);
             }}
-            placeholder="Search account..."
+            placeholder={t("Search account...")}
             className="w-full rounded-md border border-input bg-background px-9 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
           />
         </div>
 
         <div className="flex gap-2">
           <Button variant="secondary" className="font-medium" onClick={() => setOpenImport(true)}>
-            <Import /> Import
+            <Import /> {t("Import")}
           </Button>
 
           <Button className="font-medium" onClick={() => setOpenAddAccount(true)}>
-            + Add Account
+            {t("+ Add Account")}
           </Button>
 
           <Button variant="outline" className="gap-2" onClick={() => setOpenRoleGroup(true)}>
             <Users className="h-4 w-4" />
-            Role Group
+            {t("Role Group")}
           </Button>
         </div>
       </div>
@@ -204,13 +206,13 @@ export default function AccountPage() {
           <TableHeader>
             <TableRow>
               <TableHead>NIK</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Department</TableHead>
-              <TableHead>Job Level</TableHead>
-              <TableHead>Updated At</TableHead>
-              <TableHead>Is Active</TableHead>
-              <TableHead className="w-16 text-center">Actions</TableHead>
+              <TableHead>{t("Name")}</TableHead>
+              <TableHead>{t("Role")}</TableHead>
+              <TableHead>{t("Department")}</TableHead>
+              <TableHead>{t("Job Level")}</TableHead>
+              <TableHead>{t("Updated At")}</TableHead>
+              <TableHead>{t("Is Active")}</TableHead>
+              <TableHead className="w-16 text-center">{t("Actions")}</TableHead>
             </TableRow>
           </TableHeader>
 
@@ -227,12 +229,12 @@ export default function AccountPage() {
                   {row.isActive ? (
                     <Badge variant="default">
                       <CircleCheck className="w-3 h-3" />
-                      Active
+                      {t("Active")}
                     </Badge>
                   ) : (
                     <Badge variant="destructive">
                       <XCircle className="w-3 h-3" />
-                      Inactive
+                      {t("Inactive")}
                     </Badge>
                   )}
                 </TableCell>
@@ -255,7 +257,7 @@ export default function AccountPage() {
             {paginated.length === 0 && (
               <TableRow>
                 <TableCell colSpan={8} className="text-center text-muted-foreground py-6">
-                  No data found
+                  {t("No data found")}
                 </TableCell>
               </TableRow>
             )}
@@ -264,7 +266,7 @@ export default function AccountPage() {
 
         <div className="flex flex-col gap-2 border-t px-3 py-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>
-            Showing {fromEntry} to {toEntry} of {totalEntries} entries
+            {t("Showing {from} to {to} of {total} entries", { from: fromEntry, to: toEntry, total: totalEntries })}
           </span>
 
           <div className="flex items-center gap-2">
@@ -273,7 +275,7 @@ export default function AccountPage() {
             </Button>
 
             <span className="min-w-24 text-center text-foreground">
-              Page {page} of {totalPages || 1}
+              {t("Page {page} of {total}", { page, total: totalPages || 1 })}
             </span>
 
             <Button variant="outline" size="icon" className="h-8 w-8" disabled={page === totalPages || totalPages === 0} onClick={() => setPage((p) => p + 1)}>
@@ -287,7 +289,7 @@ export default function AccountPage() {
       <Dialog open={openImport} onOpenChange={setOpenImport}>
         <DialogContent className="w-[98vw] max-w-none overflow-hidden">
           <DialogHeader>
-            <DialogTitle>Import from Excel</DialogTitle>
+            <DialogTitle>{t("Import from Excel")}</DialogTitle>
           </DialogHeader>
 
           {/* wrapper utama supaya body bisa stretch */}
@@ -326,7 +328,7 @@ export default function AccountPage() {
 
             <DialogFooter className="shrink-0">
               <Button variant="outline" onClick={() => setOpenImport(false)}>
-                Cancel
+                {t("Cancel")}
               </Button>
 
               <Button
@@ -336,7 +338,7 @@ export default function AccountPage() {
                   setOpenImport(false);
                 }}
               >
-                Import Data
+                {t("Import Data")}
               </Button>
             </DialogFooter>
           </div>
@@ -347,7 +349,7 @@ export default function AccountPage() {
       <Dialog open={openEdit} onOpenChange={setOpenEdit}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Edit Account</DialogTitle>
+            <DialogTitle>{t("Edit Account")}</DialogTitle>
           </DialogHeader>
 
           {selected && (
@@ -358,13 +360,13 @@ export default function AccountPage() {
               </div>
 
               <div className="space-y-1">
-                <Label>Name</Label>
+                <Label>{t("Name")}</Label>
                 <Input defaultValue={selected.name} />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <Label>Role</Label>
+                  <Label>{t("Role")}</Label>
                   <select defaultValue={selected.role} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
                     {roles.map((r) => (
                       <option key={r.id} value={r.name}>
@@ -375,7 +377,7 @@ export default function AccountPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <Label>Department</Label>
+                  <Label>{t("Department")}</Label>
                   <select defaultValue={selected.department} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
                     <option value="MSTD">MSTD</option>
                     <option value="TS">TS</option>
@@ -385,7 +387,7 @@ export default function AccountPage() {
               </div>
 
               <div className="space-y-1">
-                <Label>Job Level</Label>
+                <Label>{t("Job Level")}</Label>
                 <Input defaultValue={selected.jobLevel} />
               </div>
 
@@ -396,12 +398,12 @@ export default function AccountPage() {
 
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <div className="space-y-0.5">
-                  <Label>Status</Label>
-                  <p className="text-xs text-muted-foreground">Set account as active or inactive</p>
+                  <Label>{t("Status")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("Set account as active or inactive")}</p>
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium">{isActive ? "Active" : "Inactive"}</span>
+                  <span className="text-sm font-medium">{isActive ? t("Active") : t("Inactive")}</span>
                   <Switch checked={isActive} onCheckedChange={setIsActive} />
                 </div>
               </div>
@@ -417,14 +419,14 @@ export default function AccountPage() {
               }}
             >
               <KeyRound className="mr-2 h-4 w-4" />
-              Reset Password
+              {t("Reset Password")}
             </Button>
 
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setOpenEdit(false)}>
-                Cancel
+                {t("Cancel")}
               </Button>
-              <Button>Save Changes</Button>
+              <Button>{t("Save Changes")}</Button>
             </div>
           </DialogFooter>
         </DialogContent>
@@ -434,7 +436,7 @@ export default function AccountPage() {
       <Dialog open={openAddAccount} onOpenChange={setOpenAddAccount}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Add Account</DialogTitle>
+            <DialogTitle>{t("Add Account")}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 mb-4">
@@ -444,15 +446,15 @@ export default function AccountPage() {
             </div>
 
             <div className="space-y-1">
-              <Label>Name</Label>
+              <Label>{t("Name")}</Label>
               <Input value={createForm.name} onChange={(e) => setCreateForm((p) => ({ ...p, name: e.target.value }))} />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label>Role</Label>
+                <Label>{t("Role")}</Label>
                 <select value={createForm.role} onChange={(e) => setCreateForm((p) => ({ ...p, role: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
-                  <option value="">Select role</option>
+                  <option value="">{t("Select role")}</option>
                   {roles.map((r) => (
                     <option key={r.id} value={r.name}>
                       {r.name}
@@ -462,9 +464,9 @@ export default function AccountPage() {
               </div>
 
               <div className="space-y-1">
-                <Label>Department</Label>
+                <Label>{t("Department")}</Label>
                 <select value={createForm.department} onChange={(e) => setCreateForm((p) => ({ ...p, department: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
-                  <option value="">Select department</option>
+                  <option value="">{t("Select department")}</option>
                   <option value="MSTD">MSTD</option>
                   <option value="TS">TS</option>
                   <option value="QA">QA</option>
@@ -473,7 +475,7 @@ export default function AccountPage() {
             </div>
 
             <div className="space-y-1">
-              <Label>Job Level</Label>
+              <Label>{t("Job Level")}</Label>
               <Input value={createForm.jobLevel} onChange={(e) => setCreateForm((p) => ({ ...p, jobLevel: e.target.value }))} />
             </div>
 
@@ -485,7 +487,7 @@ export default function AccountPage() {
 
           <DialogFooter className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setOpenAddAccount(false)}>
-              Cancel
+              {t("Cancel")}
             </Button>
 
             <Button
@@ -504,7 +506,7 @@ export default function AccountPage() {
                 setOpenAddAccount(false);
               }}
             >
-              Save
+              {t("Save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -514,13 +516,13 @@ export default function AccountPage() {
       <Dialog open={openRoleGroup} onOpenChange={setOpenRoleGroup}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Role Group</DialogTitle>
+            <DialogTitle>{t("Role Group")}</DialogTitle>
           </DialogHeader>
 
           <div className="flex justify-start">
             <Button size="sm" className="gap-1" onClick={() => setOpenAddRole(true)}>
               <Plus className="h-4 w-4" />
-              Add Role
+              {t("Add Role")}
             </Button>
           </div>
 
@@ -547,7 +549,7 @@ export default function AccountPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenRoleGroup(false)}>
-              Close
+              {t("Close")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -557,14 +559,14 @@ export default function AccountPage() {
       <Dialog open={openResetPassword} onOpenChange={setOpenResetPassword}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Reset password</DialogTitle>
+            <DialogTitle>{t("Reset password")}</DialogTitle>
           </DialogHeader>
 
-          <p className="text-sm text-muted-foreground">Reset password for this account?</p>
+          <p className="text-sm text-muted-foreground">{t("Reset password for this account?")}</p>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenResetPassword(false)}>
-              Cancel
+              {t("Cancel")}
             </Button>
 
             <Button
@@ -575,7 +577,7 @@ export default function AccountPage() {
                 setOpenResetPassword(false);
               }}
             >
-              Yes
+              {t("Yes")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -585,24 +587,24 @@ export default function AccountPage() {
       <Dialog open={openAddRole} onOpenChange={setOpenAddRole}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Add Role Group</DialogTitle>
+            <DialogTitle>{t("Add Role Group")}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-1">
-              <Label>Role Name</Label>
-              <Input placeholder="ex: QC Supervisor" value={newRoleName} onChange={(e) => setNewRoleName(e.target.value)} />
+              <Label>{t("Role Name")}</Label>
+              <Input placeholder={t("ex: QC Supervisor")} value={newRoleName} onChange={(e) => setNewRoleName(e.target.value)} />
             </div>
 
             <div className="space-y-1">
-              <Label>Description</Label>
-              <Input placeholder="optional" value={newRoleDesc} onChange={(e) => setNewRoleDesc(e.target.value)} />
+              <Label>{t("Description")}</Label>
+              <Input placeholder={t("optional")} value={newRoleDesc} onChange={(e) => setNewRoleDesc(e.target.value)} />
             </div>
           </div>
 
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setOpenAddRole(false)}>
-              Cancel
+              {t("Cancel")}
             </Button>
 
             <Button
@@ -622,7 +624,7 @@ export default function AccountPage() {
                 setOpenAddRole(false);
               }}
             >
-              Save
+              {t("Save")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { getStoredAuthToken } from "@/lib/api/auth";
 import { INCIDENT_STATUS_LABEL, INCIDENT_TYPE_LABEL, createShippingIncident, isIncidentOpen, listShippingIncidents, type IncidentType, type ShippingIncident } from "@/lib/api/shipping-incident";
 import { formatPlanDate, listShippingPlans, type ShippingPlan } from "@/lib/api/shipping-plan";
+import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -29,6 +30,7 @@ export default function CreateIncidentPage() {
 }
 
 function CreateIncidentForm() {
+  const { t } = useI18n();
   const router = useRouter();
   const preselected = useSearchParams().get("planId") ?? "";
   const [plans, setPlans] = useState<ShippingPlan[]>([]);
@@ -44,10 +46,11 @@ function CreateIncidentForm() {
   useEffect(() => {
     listShippingPlans(getStoredAuthToken() ?? undefined)
       .then((rows) => setPlans(rows.filter((p) => p.status === "DISPATCHED" || p.status === "COMPLETED")))
-      .catch((e) => toast.error(e instanceof Error ? e.message : "Gagal mengambil plan."));
+      .catch((e) => toast.error(e instanceof Error ? e.message : t("Gagal mengambil plan.")));
     listShippingIncidents(getStoredAuthToken() ?? undefined)
       .then(setIncidents)
       .catch(() => setIncidents([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // a plan can only have one open incident at a time; the server enforces it too
@@ -55,18 +58,18 @@ function CreateIncidentForm() {
 
   async function save() {
     setServerError(null);
-    if (!planNewId) return void toast.error("Pilih plan pengirimannya.");
-    if (!description.trim()) return void toast.error("Jelaskan kejadiannya.");
+    if (!planNewId) return void toast.error(t("Pilih plan pengirimannya."));
+    if (!description.trim()) return void toast.error(t("Jelaskan kejadiannya."));
     setIsSaving(true);
     try {
       const saved = await createShippingIncident(
         { planNewId, type, occurredDate, description: description.trim(), targetDate: targetDate || undefined },
         getStoredAuthToken() ?? undefined,
       );
-      toast.success(`Insiden ${saved.incidentNo} dilaporkan.`);
+      toast.success(t("Insiden {no} dilaporkan.", { no: saved.incidentNo }));
       router.push(`/shipping/incident/${saved.newId}`);
     } catch (e) {
-      setServerError(e instanceof Error ? e.message : "Gagal melaporkan insiden.");
+      setServerError(e instanceof Error ? e.message : t("Gagal melaporkan insiden."));
       setIsSaving(false);
     }
   }
@@ -77,15 +80,15 @@ function CreateIncidentForm() {
 
       <div className="space-y-2">
         <Link href="/shipping/incident" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
-          <ChevronLeft className="mr-1 h-4 w-4" /> Kembali ke daftar insiden
+          <ChevronLeft className="mr-1 h-4 w-4" /> {t("Kembali ke daftar insiden")}
         </Link>
-        <h1 className="text-2xl font-semibold tracking-tight">Lapor Insiden</h1>
-        <p className="text-sm text-muted-foreground">Plan tidak selesai otomatis selama masih ada insiden yang belum ditutup.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("Lapor Insiden")}</h1>
+        <p className="text-sm text-muted-foreground">{t("Plan tidak selesai otomatis selama masih ada insiden yang belum ditutup.")}</p>
       </div>
 
       <div className="max-w-3xl space-y-5 rounded-lg border p-5">
         <div className="space-y-1.5">
-          <Label>Plan pengiriman</Label>
+          <Label>{t("Plan pengiriman")}</Label>
           <Combobox
             options={plans.map((p) => ({
               value: p.newId,
@@ -102,11 +105,11 @@ function CreateIncidentForm() {
               setPlanNewId(v);
               setServerError(null);
             }}
-            placeholder="Pilih plan yang sedang dikirim atau baru selesai"
-            searchPlaceholder="Cari no plan, asal, tujuan..."
+            placeholder={t("Pilih plan yang sedang dikirim atau baru selesai")}
+            searchPlaceholder={t("Cari no plan, asal, tujuan...")}
           />
           {plans.find((p) => p.newId === planNewId)?.etaDate && (
-            <p className="text-xs text-muted-foreground">ETA {formatPlanDate(plans.find((p) => p.newId === planNewId)?.etaDate)}</p>
+            <p className="text-xs text-muted-foreground">{t("ETA {date}", { date: formatPlanDate(plans.find((p) => p.newId === planNewId)?.etaDate) })}</p>
           )}
         </div>
 
@@ -116,17 +119,19 @@ function CreateIncidentForm() {
             <div className="space-y-1">
               <p>
                 {blocking ? (
-                  <>
-                    Plan ini masih punya insiden <strong>{blocking.incidentNo}</strong> dengan status <strong>{INCIDENT_STATUS_LABEL[blocking.status]}</strong>. Selesaikan atau tolak insiden itu dulu
-                    sebelum melaporkan yang baru.
-                  </>
+                  <RichMessage
+                    text={t("Plan ini masih punya insiden **{no}** dengan status **{status}**. Selesaikan atau tolak insiden itu dulu sebelum melaporkan yang baru.", {
+                      no: blocking.incidentNo,
+                      status: t(INCIDENT_STATUS_LABEL[blocking.status]),
+                    })}
+                  />
                 ) : (
                   <RichMessage text={serverError ?? ""} />
                 )}
               </p>
               {blocking && (
                 <Link href={`/shipping/incident/${blocking.newId}`} className="font-medium underline">
-                  Buka {blocking.incidentNo}
+                  {t("Buka {no}", { no: blocking.incidentNo })}
                 </Link>
               )}
             </div>
@@ -134,7 +139,7 @@ function CreateIncidentForm() {
         )}
 
         <div className="space-y-2">
-          <Label>Jenis insiden</Label>
+          <Label>{t("Jenis insiden")}</Label>
           <div className="flex flex-wrap gap-2">
             {(Object.entries(INCIDENT_TYPE_LABEL) as [IncidentType, string][]).map(([value, label]) => (
               <button
@@ -147,30 +152,30 @@ function CreateIncidentForm() {
                   type === value ? "border-blue-600 bg-blue-50 font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300" : "hover:bg-muted/50",
                 )}
               >
-                {label}
+                {t(label)}
               </button>
             ))}
           </div>
         </div>
 
         <div className="space-y-1.5">
-          <Label>Kejadian</Label>
+          <Label>{t("Kejadian")}</Label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={4}
-            placeholder="Apa yang terjadi, barang apa, berapa banyak, di mana"
+            placeholder={t("Apa yang terjadi, barang apa, berapa banyak, di mana")}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           />
         </div>
 
         <div className="grid gap-5 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label>Tanggal kejadian</Label>
+            <Label>{t("Tanggal kejadian")}</Label>
             <Input type="date" value={occurredDate} max={today()} onChange={(e) => setOccurredDate(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>Estimasi selesai ditangani (opsional)</Label>
+            <Label>{t("Estimasi selesai ditangani (opsional)")}</Label>
             <div className="flex flex-wrap items-center gap-2">
               <Input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="w-40" />
               {[
@@ -178,7 +183,7 @@ function CreateIncidentForm() {
                 ["+7 hari", 7],
               ].map(([label, days]) => (
                 <Button key={label} type="button" variant="outline" size="sm" onClick={() => setTargetDate(addDays(days as number))}>
-                  {label}
+                  {t(label as string)}
                 </Button>
               ))}
             </div>
@@ -187,10 +192,10 @@ function CreateIncidentForm() {
 
         <div className="flex justify-end gap-3">
           <Button variant="outline" asChild>
-            <Link href="/shipping/incident">Batal</Link>
+            <Link href="/shipping/incident">{t("Batal")}</Link>
           </Button>
           <Button onClick={() => void save()} disabled={isSaving || blocking !== null}>
-            Laporkan Insiden
+            {t("Laporkan Insiden")}
           </Button>
         </div>
       </div>

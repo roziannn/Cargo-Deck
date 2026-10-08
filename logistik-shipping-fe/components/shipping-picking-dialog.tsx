@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useI18n } from "@/lib/i18n/provider";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getStoredAuthToken } from "@/lib/api/auth";
 import { saveShippingPlanPicking, type ShippingPlanDetail } from "@/lib/api/shipping-plan";
@@ -23,6 +24,7 @@ export function ShippingPickingDialog({
   onOpenChange: (open: boolean) => void;
   onSaved: (plan: ShippingPlanDetail) => void;
 }) {
+  const { t } = useI18n();
   // default to the planned quantity so the common case is a single click
   const [picked, setPicked] = useState<Record<string, string>>(() =>
     Object.fromEntries(plan.items.map((item) => [item.cubstoolNewId, String(item.pickedQty ?? item.qty)])),
@@ -40,8 +42,8 @@ export function ShippingPickingDialog({
   const short = total < planned;
 
   async function save(complete: boolean) {
-    if (invalid) return void toast.error("Jumlah pick harus bilangan bulat dan tidak boleh melebihi rencana.");
-    if (complete && short && !notes.trim()) return void toast.error("Ada selisih dari rencana. Isi catatan penyebabnya.");
+    if (invalid) return void toast.error(t("Jumlah pick harus bilangan bulat dan tidak boleh melebihi rencana."));
+    if (complete && short && !notes.trim()) return void toast.error(t("Ada selisih dari rencana. Isi catatan penyebabnya."));
 
     setIsSaving(true);
     try {
@@ -54,11 +56,11 @@ export function ShippingPickingDialog({
         },
         getStoredAuthToken() ?? undefined,
       );
-      toast.success(complete ? "Picking & packing selesai. Lanjut ke loading." : "Hasil picking tersimpan.");
+      toast.success(complete ? t("Picking & packing selesai. Lanjut ke loading.") : t("Hasil picking tersimpan."));
       onSaved(saved);
       onOpenChange(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Gagal menyimpan picking.");
+      toast.error(error instanceof Error ? error.message : t("Gagal menyimpan picking."));
     } finally {
       setIsSaving(false);
     }
@@ -68,18 +70,18 @@ export function ShippingPickingDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Picking &amp; Packing — {plan.planNo}</DialogTitle>
-          <DialogDescription>Isi jumlah karton yang benar-benar diambil dari gudang dan sudah dikemas. Bawaan sama dengan rencana.</DialogDescription>
+          <DialogTitle>{t("Picking & Packing")} — {plan.planNo}</DialogTitle>
+          <DialogDescription>{t("Isi jumlah karton yang benar-benar diambil dari gudang dan sudah dikemas. Bawaan sama dengan rencana.")}</DialogDescription>
         </DialogHeader>
 
         <div className="overflow-hidden rounded-lg border">
           <Table containerClassName="rounded-none border-0 bg-transparent">
             <TableHeader>
               <TableRow>
-                <TableHead>Kode</TableHead>
-                <TableHead>Barang</TableHead>
-                <TableHead className="text-right">Rencana</TableHead>
-                <TableHead className="w-28 text-right">Di-pick</TableHead>
+                <TableHead>{t("Kode")}</TableHead>
+                <TableHead>{t("Barang")}</TableHead>
+                <TableHead className="text-right">{t("Rencana")}</TableHead>
+                <TableHead className="w-28 text-right">{t("Di-pick")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -105,7 +107,7 @@ export function ShippingPickingDialog({
               })}
               <TableRow className="font-semibold">
                 <TableCell colSpan={2} className="text-right">
-                  Total
+                  {t("Total")}
                 </TableCell>
                 <TableCell className="text-right">{planned}</TableCell>
                 <TableCell className={`text-right ${short ? "text-amber-700" : ""}`}>{total}</TableCell>
@@ -115,25 +117,25 @@ export function ShippingPickingDialog({
         </div>
 
         <div className="space-y-1">
-          <Label>Catatan {short ? "(wajib, ada selisih dari rencana)" : ""}</Label>
+          <Label>{short ? t("Catatan (wajib, ada selisih dari rencana)") : t("Catatan")}</Label>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
-            placeholder="Mis. stok kurang, karton rusak, diganti batch lain"
+            placeholder={t("Mis. stok kurang, karton rusak, diganti batch lain")}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           />
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
-            Tutup
+            {t("Tutup")}
           </Button>
           <Button variant="outline" onClick={() => void save(false)} disabled={isSaving}>
-            Simpan Sementara
+            {t("Simpan Sementara")}
           </Button>
           <Button onClick={() => void save(true)} disabled={isSaving}>
-            Selesai, Lanjut Loading
+            {t("Selesai, Lanjut Loading")}
           </Button>
         </DialogFooter>
       </DialogContent>

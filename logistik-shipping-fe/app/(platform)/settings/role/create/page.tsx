@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { getStoredAuthToken, getStoredAuthUser } from "@/lib/api/auth";
 import { createCoreRole } from "@/lib/api/core-role";
+import { useI18n } from "@/lib/i18n/provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +29,7 @@ function formatDateTime(value: Date) {
 }
 
 export default function RoleCreatePage() {
+  const { t } = useI18n();
   const router = useRouter();
   const createdDate = useMemo(() => formatDateTime(new Date()), []);
   const [actor, setActor] = useState("");
@@ -43,12 +45,12 @@ export default function RoleCreatePage() {
   async function handleSave() {
     const normalizedName = name.trim();
     if (!normalizedName) {
-      toast.error("Name wajib diisi.");
+      toast.error(t("Name wajib diisi."));
       return;
     }
 
     if (!actor) {
-      toast.error("User login tidak ditemukan.");
+      toast.error(t("User login tidak ditemukan."));
       return;
     }
 
@@ -64,11 +66,11 @@ export default function RoleCreatePage() {
         token,
       );
 
-      toast.success(`Role "${normalizedName}" berhasil disimpan.`);
+      toast.success(t('Role "{name}" berhasil disimpan.', { name: normalizedName }));
       router.push("/settings/role");
       router.refresh();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Gagal menyimpan role.";
+      const message = error instanceof Error ? error.message : t("Gagal menyimpan role.");
       toast.error(message);
     } finally {
       setIsSaving(false);
@@ -80,52 +82,52 @@ export default function RoleCreatePage() {
       <Toaster position="top-center" />
 
       <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Add Role</h1>
-        <p className="text-sm text-muted-foreground">Create a new core role with the field structure based on the master table.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("Add Role")}</h1>
+        <p className="text-sm text-muted-foreground">{t("Create a new core role with the field structure based on the master table.")}</p>
       </div>
 
       <div className="rounded-lg border bg-background p-6">
         <div className="grid gap-5 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="role-name">Name</Label>
-            <Input id="role-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Input role name" maxLength={256} />
+            <Label htmlFor="role-name">{t("Name")}</Label>
+            <Input id="role-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Input role name")} maxLength={256} />
           </div>
 
           <div className="space-y-2">
-            <Label>Is Active</Label>
+            <Label>{t("Is Active")}</Label>
             <div className="flex h-10 items-center justify-between rounded-md border px-3">
-              <span className="text-sm text-muted-foreground">{isActive ? "Active" : "Inactive"}</span>
+              <span className="text-sm text-muted-foreground">{isActive ? t("Active") : t("Inactive")}</span>
               <Switch checked={isActive} onCheckedChange={setIsActive} />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="created-by">Created By</Label>
-            <Input id="created-by" value={actor} readOnly disabled placeholder="Auto from login user" />
+            <Label htmlFor="created-by">{t("Created By")}</Label>
+            <Input id="created-by" value={actor} readOnly disabled placeholder={t("Auto from login user")} />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="created-date">Created Date</Label>
+            <Label htmlFor="created-date">{t("Created Date")}</Label>
             <Input id="created-date" value={createdDate} readOnly disabled />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="updated-by">Updated By</Label>
-            <Input id="updated-by" value="" readOnly disabled placeholder="Filled automatically on update" />
+            <Label htmlFor="updated-by">{t("Updated By")}</Label>
+            <Input id="updated-by" value="" readOnly disabled placeholder={t("Filled automatically on update")} />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="updated-date">Updated Date</Label>
-            <Input id="updated-date" value="" readOnly disabled placeholder="Filled automatically on update" />
+            <Label htmlFor="updated-date">{t("Updated Date")}</Label>
+            <Input id="updated-date" value="" readOnly disabled placeholder={t("Filled automatically on update")} />
           </div>
         </div>
 
         <div className="mt-8 flex justify-end gap-2">
           <Button asChild variant="outline" disabled={isSaving}>
-            <Link href="/settings/role">Cancel</Link>
+            <Link href="/settings/role">{t("Cancel")}</Link>
           </Button>
           <Button onClick={() => void handleSave()} disabled={isSaving}>
-            {isSaving ? "Saving..." : "Save Role"}
+            {isSaving ? t("Saving...") : t("Save Role")}
           </Button>
         </div>
       </div>

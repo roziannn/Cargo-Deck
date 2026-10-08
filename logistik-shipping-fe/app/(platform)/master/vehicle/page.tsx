@@ -15,6 +15,8 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getStoredAuthToken, getStoredAuthUser } from "@/lib/api/auth";
 import { createMstVehicle, getMstVehicleById, listMstVehicles, type MstVehicleItem, updateMstVehicle } from "@/lib/api/mst-vehicle";
+import { useI18n } from "@/lib/i18n/provider";
+import { localeTag } from "@/lib/i18n/locale";
 
 function formatDimensions(row: Pick<MstVehicleItem, "dimensionsL" | "dimensionsW">) {
   return [row.dimensionsL, row.dimensionsW].map((value) => value.trim() || "-").join(" x ");
@@ -26,7 +28,7 @@ function formatCreatedDate(value: string) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
 
-  return new Intl.DateTimeFormat("id-ID", {
+  return new Intl.DateTimeFormat(localeTag(), {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(parsed);
@@ -127,6 +129,7 @@ function parseImportRows(file: File) {
 }
 
 export default function VehiclePage() {
+  const { t } = useI18n();
   const [data, setData] = useState<MstVehicleItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -166,13 +169,13 @@ export default function VehiclePage() {
       const rows = await listMstVehicles(token);
       setData(rows);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Gagal mengambil data vehicle.";
+      const message = error instanceof Error ? error.message : t("Gagal mengambil data vehicle.");
       toast.error(message);
       setData([]);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -243,7 +246,7 @@ export default function VehiclePage() {
       setRatePerKm(source.ratePerKm);
       setIsActive(source.isActive);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Gagal mengambil detail vehicle.";
+      const message = error instanceof Error ? error.message : t("Gagal mengambil detail vehicle.");
       toast.error(message);
       setOpenForm(false);
     } finally {
@@ -263,12 +266,12 @@ export default function VehiclePage() {
     const normalizedMaxPayload = maxPayload.trim();
 
     if (!normalizedName) {
-      toast.error("Name wajib diisi.");
+      toast.error(t("Name wajib diisi."));
       return;
     }
 
     if (mode === "edit" && !editingNewId) {
-      toast.error("NewId vehicle tidak ditemukan.");
+      toast.error(t("NewId vehicle tidak ditemukan."));
       return;
     }
 
@@ -277,7 +280,7 @@ export default function VehiclePage() {
     const actor = (currentUser?.name || currentUser?.username || currentUser?.email || "").trim();
 
     if (!actor) {
-      toast.error("User login tidak ditemukan.");
+      toast.error(t("User login tidak ditemukan."));
       return;
     }
 
@@ -309,9 +312,9 @@ export default function VehiclePage() {
       setPage(1);
       setOpenForm(false);
       resetForm();
-      toast.success(mode === "create" ? `Vehicle "${normalizedName}" berhasil ditambahkan.` : `Vehicle "${normalizedName}" berhasil diperbarui.`);
+      toast.success(mode === "create" ? t('Vehicle "{name}" berhasil ditambahkan.', { name: normalizedName }) : t('Vehicle "{name}" berhasil diperbarui.', { name: normalizedName }));
     } catch (error) {
-      const message = error instanceof Error ? error.message : mode === "create" ? "Gagal menyimpan vehicle." : "Gagal memperbarui vehicle.";
+      const message = error instanceof Error ? error.message : mode === "create" ? t("Gagal menyimpan vehicle.") : t("Gagal memperbarui vehicle.");
       toast.error(message);
     } finally {
       setIsSaving(false);
@@ -327,13 +330,13 @@ export default function VehiclePage() {
 
     const fileName = file.name.toLowerCase();
     if (!(fileName.endsWith(".xls") || fileName.endsWith(".xlsx"))) {
-      setImportError("Hanya file .xls / .xlsx yang diperbolehkan.");
+      setImportError(t("Hanya file .xls / .xlsx yang diperbolehkan."));
       setImportFile(null);
       return;
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      setImportError("Ukuran file maksimal 5MB.");
+      setImportError(t("Ukuran file maksimal 5MB."));
       setImportFile(null);
       return;
     }
@@ -350,7 +353,7 @@ export default function VehiclePage() {
 
   async function handleImport() {
     if (!importFile) {
-      setImportError("Pilih file terlebih dahulu.");
+      setImportError(t("Pilih file terlebih dahulu."));
       return;
     }
 
@@ -359,7 +362,7 @@ export default function VehiclePage() {
     const actor = (currentUser?.name || currentUser?.username || currentUser?.email || "").trim();
 
     if (!actor) {
-      setImportError("User login tidak ditemukan.");
+      setImportError(t("User login tidak ditemukan."));
       return;
     }
 
@@ -374,7 +377,7 @@ export default function VehiclePage() {
         const normalizedName = row.name.trim();
 
         if (!normalizedName) {
-          errors.push(`Baris ${index + 2}: Name wajib diisi.`);
+          errors.push(t("Baris {row}: Name wajib diisi.", { row: index + 2 }));
           continue;
         }
 
@@ -396,8 +399,8 @@ export default function VehiclePage() {
           );
           successCount += 1;
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Gagal import data.";
-          errors.push(`Baris ${index + 2}: ${message}`);
+          const message = error instanceof Error ? error.message : t("Gagal import data.");
+          errors.push(t("Baris {row}: {message}", { row: index + 2, message }));
         }
       }
 
@@ -408,19 +411,19 @@ export default function VehiclePage() {
         setOpenImport(false);
         setImportFile(null);
         setImportError(null);
-        toast.success(`${successCount} data vehicle berhasil diimport.`);
+        toast.success(t("{count} data vehicle berhasil diimport.", { count: successCount }));
         return;
       }
 
       if (successCount > 0 && errors.length > 0) {
-        toast.success(`${successCount} data berhasil diimport. ${errors.length} data gagal.`);
+        toast.success(t("{count} data berhasil diimport. {failed} data gagal.", { count: successCount, failed: errors.length }));
         setImportError(errors.slice(0, 5).join("\n"));
         return;
       }
 
-      setImportError(errors.slice(0, 5).join("\n") || "Tidak ada data yang berhasil diimport.");
+      setImportError(errors.slice(0, 5).join("\n") || t("Tidak ada data yang berhasil diimport."));
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Gagal mengunggah file.";
+      const message = error instanceof Error ? t(error.message) : t("Gagal mengunggah file.");
       setImportError(message);
     } finally {
       setIsImporting(false);
@@ -447,8 +450,8 @@ export default function VehiclePage() {
       <Toaster position="top-center" />
 
       <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Master Vehicle</h1>
-        <p className="text-sm text-muted-foreground">Manage vehicle master data.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("Master Vehicle")}</h1>
+        <p className="text-sm text-muted-foreground">{t("Manage vehicle master data.")}</p>
       </div>
 
       <div className="flex items-center justify-between">
@@ -460,17 +463,17 @@ export default function VehiclePage() {
               setSearch(e.target.value);
               setPage(1);
             }}
-            placeholder="Search name, type, climate, or creator..."
+            placeholder={t("Search name, type, climate, or creator...")}
             className="w-full rounded-md px-9 py-2 text-sm"
           />
         </div>
 
         <div className="flex items-center gap-2">
           <Button onClick={() => setOpenImport(true)} variant="outline" className="font-medium">
-            <Upload className="mr-2 h-4 w-4" /> Import
+            <Upload className="mr-2 h-4 w-4" /> {t("Import")}
           </Button>
           <Button onClick={openCreate} className="font-medium">
-            + Add Vehicle
+            {t("+ Add Vehicle")}
           </Button>
         </div>
       </div>
@@ -479,17 +482,17 @@ export default function VehiclePage() {
         <Table containerClassName="rounded-none border-0 bg-transparent">
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Climate</TableHead>
-              <TableHead>CBM</TableHead>
-              <TableHead>Dimensions (L x W m)</TableHead>
-              <TableHead>Floor Area (m2)</TableHead>
-              <TableHead>Max Height (m)</TableHead>
-              <TableHead>Is Active</TableHead>
-              <TableHead>Created By</TableHead>
-              <TableHead>Created Date</TableHead>
-              <TableHead className="w-24 text-center">Actions</TableHead>
+              <TableHead>{t("Name")}</TableHead>
+              <TableHead>{t("Type")}</TableHead>
+              <TableHead>{t("Climate")}</TableHead>
+              <TableHead>{t("CBM")}</TableHead>
+              <TableHead>{t("Dimensions (L x W m)")}</TableHead>
+              <TableHead>{t("Floor Area (m2)")}</TableHead>
+              <TableHead>{t("Max Height (m)")}</TableHead>
+              <TableHead>{t("Is Active")}</TableHead>
+              <TableHead>{t("Created By")}</TableHead>
+              <TableHead>{t("Created Date")}</TableHead>
+              <TableHead className="w-24 text-center">{t("Actions")}</TableHead>
             </TableRow>
           </TableHeader>
 
@@ -505,9 +508,9 @@ export default function VehiclePage() {
                 <TableCell>{row.maxHeight || "-"}</TableCell>
                 <TableCell>
                   {row.isActive ? (
-                    <Badge className="border border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Active</Badge>
+                    <Badge className="border border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">{t("Active")}</Badge>
                   ) : (
-                    <Badge variant="secondary">Inactive</Badge>
+                    <Badge variant="secondary">{t("Inactive")}</Badge>
                   )}
                 </TableCell>
                 <TableCell>{row.createdBy || "-"}</TableCell>
@@ -540,7 +543,11 @@ export default function VehiclePage() {
 
         <div className="flex flex-col gap-2 border-t px-3 py-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>
-            Showing {Math.min(startIndex + 1, filtered.length || 0)} to {Math.min(startIndex + rowsPerPage, filtered.length)} of {filtered.length} entries
+            {t("Showing {from} to {to} of {total} entries", {
+              from: Math.min(startIndex + 1, filtered.length || 0),
+              to: Math.min(startIndex + rowsPerPage, filtered.length),
+              total: filtered.length,
+            })}
           </span>
 
           <div className="flex items-center gap-2">
@@ -549,7 +556,7 @@ export default function VehiclePage() {
             </Button>
 
             <span className="min-w-24 text-center">
-              Page {page} of {totalPages}
+              {t("Page {page} of {total}", { page, total: totalPages })}
             </span>
 
             <Button variant="outline" size="icon" className="h-8 w-8" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>
@@ -562,29 +569,29 @@ export default function VehiclePage() {
       <Dialog open={openForm} onOpenChange={setOpenForm}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{mode === "create" ? "Add Vehicle" : "Edit Vehicle"}</DialogTitle>
+            <DialogTitle>{mode === "create" ? t("Add Vehicle") : t("Edit Vehicle")}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-1">
-              <Label>Name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Input name" disabled={isSaving && mode === "edit"} />
+              <Label>{t("Name")}</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Input name")} disabled={isSaving && mode === "edit"} />
             </div>
 
             <div className="space-y-1">
-              <Label>Type</Label>
-              <Input value={typeField} onChange={(e) => setTypeField(e.target.value)} placeholder="Input type" disabled={isSaving && mode === "edit"} />
+              <Label>{t("Type")}</Label>
+              <Input value={typeField} onChange={(e) => setTypeField(e.target.value)} placeholder={t("Input type")} disabled={isSaving && mode === "edit"} />
             </div>
 
             <div className="space-y-1">
-              <Label>Climate</Label>
+              <Label>{t("Climate")}</Label>
               <select
                 value={climate}
                 onChange={(e) => setClimate(e.target.value)}
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 disabled={isSaving && mode === "edit"}
               >
-                <option value="">Select climate</option>
+                <option value="">{t("Select climate")}</option>
                 <option value="AC">AC</option>
                 <option value="NON_AC">NON_AC</option>
                 <option value="Non-AC">Non-AC</option>
@@ -592,53 +599,53 @@ export default function VehiclePage() {
             </div>
 
             <div className="space-y-1">
-              <Label>CBM</Label>
-              <Input value={cbm} onChange={(e) => setCbm(e.target.value)} placeholder="e.g. 12.5" disabled={isSaving && mode === "edit"} />
+              <Label>{t("CBM")}</Label>
+              <Input value={cbm} onChange={(e) => setCbm(e.target.value)} placeholder={t("e.g. 12.5")} disabled={isSaving && mode === "edit"} />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label>Dimensions L (m)</Label>
-                <Input value={dimensionsL} onChange={(e) => setDimensionsL(e.target.value)} placeholder="e.g. 6" disabled={isSaving && mode === "edit"} />
+                <Label>{t("Dimensions L (m)")}</Label>
+                <Input value={dimensionsL} onChange={(e) => setDimensionsL(e.target.value)} placeholder={t("e.g. 6")} disabled={isSaving && mode === "edit"} />
               </div>
 
               <div className="space-y-1">
-                <Label>Dimensions W (m)</Label>
-                <Input value={dimensionsW} onChange={(e) => setDimensionsW(e.target.value)} placeholder="e.g. 2.4" disabled={isSaving && mode === "edit"} />
+                <Label>{t("Dimensions W (m)")}</Label>
+                <Input value={dimensionsW} onChange={(e) => setDimensionsW(e.target.value)} placeholder={t("e.g. 2.4")} disabled={isSaving && mode === "edit"} />
               </div>
             </div>
 
             <div className="space-y-1">
-              <Label>Floor Area (m2)</Label>
-              <Input value={floorArea} onChange={(e) => setFloorArea(e.target.value)} placeholder="e.g. 14.4" disabled={isSaving && mode === "edit"} />
+              <Label>{t("Floor Area (m2)")}</Label>
+              <Input value={floorArea} onChange={(e) => setFloorArea(e.target.value)} placeholder={t("e.g. 14.4")} disabled={isSaving && mode === "edit"} />
             </div>
 
             <div className="space-y-1">
-              <Label>Max Height (m)</Label>
-              <Input value={maxHeight} onChange={(e) => setMaxHeight(e.target.value)} placeholder="e.g. 2.6" disabled={isSaving && mode === "edit"} />
+              <Label>{t("Max Height (m)")}</Label>
+              <Input value={maxHeight} onChange={(e) => setMaxHeight(e.target.value)} placeholder={t("e.g. 2.6")} disabled={isSaving && mode === "edit"} />
             </div>
 
             <div className="space-y-1">
-              <Label>Max Payload (kg)</Label>
-              <Input value={maxPayload} onChange={(e) => setMaxPayload(e.target.value)} placeholder="e.g. 2500" disabled={isSaving && mode === "edit"} />
+              <Label>{t("Max Payload (kg)")}</Label>
+              <Input value={maxPayload} onChange={(e) => setMaxPayload(e.target.value)} placeholder={t("e.g. 2500")} disabled={isSaving && mode === "edit"} />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label>Base Fee (Rp / trip)</Label>
-                <Input value={baseFee} onChange={(e) => setBaseFee(e.target.value)} placeholder="e.g. 400000" disabled={isSaving && mode === "edit"} />
+                <Label>{t("Base Fee (Rp / trip)")}</Label>
+                <Input value={baseFee} onChange={(e) => setBaseFee(e.target.value)} placeholder={t("e.g. 400000")} disabled={isSaving && mode === "edit"} />
               </div>
               <div className="space-y-1">
-                <Label>Rate per km (Rp)</Label>
-                <Input value={ratePerKm} onChange={(e) => setRatePerKm(e.target.value)} placeholder="e.g. 6000" disabled={isSaving && mode === "edit"} />
+                <Label>{t("Rate per km (Rp)")}</Label>
+                <Input value={ratePerKm} onChange={(e) => setRatePerKm(e.target.value)} placeholder={t("e.g. 6000")} disabled={isSaving && mode === "edit"} />
               </div>
             </div>
 
             {mode === "edit" && (
               <div className="flex items-center justify-between rounded-md border p-3">
                 <div className="space-y-0.5">
-                  <Label>Is Active</Label>
-                  <p className="text-xs text-muted-foreground">Aktifkan atau nonaktifkan data vehicle.</p>
+                  <Label>{t("Is Active")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("Aktifkan atau nonaktifkan data vehicle.")}</p>
                 </div>
                 <Switch checked={isActive} onCheckedChange={setIsActive} disabled={isSaving} />
               </div>
@@ -647,10 +654,10 @@ export default function VehiclePage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenForm(false)} disabled={isSaving}>
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button onClick={() => void handleSave()} disabled={isSaving}>
-              {isSaving ? "Saving..." : mode === "create" ? "Add" : "Save"}
+              {isSaving ? t("Saving...") : mode === "create" ? t("Add") : t("Save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -668,8 +675,8 @@ export default function VehiclePage() {
       >
         <DialogContent className="w-[calc(100vw-2rem)] max-w-md">
           <DialogHeader>
-            <DialogTitle>Import from Excel</DialogTitle>
-            Upload an Excel file (.xlsx, .xls) to bulk import vehicles.
+            <DialogTitle>{t("Import from Excel")}</DialogTitle>
+            {t("Upload an Excel file (.xlsx, .xls) to bulk import vehicles.")}
           </DialogHeader>
 
           <div className="space-y-4">
@@ -677,10 +684,10 @@ export default function VehiclePage() {
               <Info className="h-4 w-4 text-blue-700" />
               <AlertDescription>
                 <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="text-sm leading-relaxed text-blue-700">Make sure to use the correct format.</div>
+                  <div className="text-sm leading-relaxed text-blue-700">{t("Make sure to use the correct format.")}</div>
                   <button type="button" onClick={handleDownloadTemplate} className="inline-flex w-fit shrink-0 items-center gap-1 text-sm text-blue-700">
                     <Download className="h-3 w-3" />
-                    <span className="font-medium">Download Template</span>
+                    <span className="font-medium">{t("Download Template")}</span>
                   </button>
                 </div>
               </AlertDescription>
@@ -691,8 +698,8 @@ export default function VehiclePage() {
                 <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full border border-blue-200 bg-blue-100">
                   <Upload className="h-7 w-7 text-blue-600" />
                 </div>
-                <div className="text-sm">Click to upload or drag and drop</div>
-                <div className="text-xs text-muted-foreground">Excel files only (max 5MB)</div>
+                <div className="text-sm">{t("Click to upload or drag and drop")}</div>
+                <div className="text-xs text-muted-foreground">{t("Excel files only (max 5MB)")}</div>
                 <input
                   type="file"
                   accept=".xls,.xlsx"
@@ -701,21 +708,21 @@ export default function VehiclePage() {
                   id="vehicle-import-file"
                 />
                 <label htmlFor="vehicle-import-file" className="mt-3 inline-block cursor-pointer text-sm underline">
-                  Choose file
+                  {t("Choose file")}
                 </label>
               </div>
             </div>
 
-            {importFile && <div className="text-sm">Selected: {importFile.name}</div>}
+            {importFile && <div className="text-sm">{t("Selected: {name}", { name: importFile.name })}</div>}
             {importError && <div className="text-sm text-destructive">{importError}</div>}
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenImport(false)} disabled={isImporting}>
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button onClick={() => void handleImport()} disabled={isImporting}>
-              {isImporting ? "Importing..." : "Import"}
+              {isImporting ? t("Importing...") : t("Import")}
             </Button>
           </DialogFooter>
         </DialogContent>

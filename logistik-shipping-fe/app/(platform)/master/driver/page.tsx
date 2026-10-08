@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getStoredAuthToken } from "@/lib/api/auth";
 import { formatPlanDate } from "@/lib/api/shipping-plan";
 import { createMstDriver, listCarrierLov, listMstDrivers, updateMstDriver, type CarrierLovItem, type MstDriverItem } from "@/lib/api/mst-logistics";
+import { useI18n } from "@/lib/i18n/provider";
 
 type FormState = { code: string; name: string; phone: string; licenseNo: string; licenseExpiry: string; carrierNewId: string; isActive: boolean };
 
@@ -23,6 +24,7 @@ const EMPTY_FORM: FormState = { code: "", name: "", phone: "", licenseNo: "", li
 const today = () => new Date().toISOString().slice(0, 10);
 
 export default function DriverPage() {
+  const { t } = useI18n();
   const [data, setData] = useState<MstDriverItem[]>([]);
   const [carriers, setCarriers] = useState<CarrierLovItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,12 +45,12 @@ export default function DriverPage() {
       setData(drivers);
       setCarriers(carrierLov);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Gagal mengambil data driver.");
+      toast.error(error instanceof Error ? error.message : t("Gagal mengambil data driver."));
       setData([]);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const id = window.setTimeout(() => void load(), 0);
@@ -87,7 +89,7 @@ export default function DriverPage() {
 
   async function handleSave() {
     if (!form.code.trim() || !form.name.trim()) {
-      toast.error("Code dan Name wajib diisi.");
+      toast.error(t("Code dan Name wajib diisi."));
       return;
     }
     setIsSaving(true);
@@ -96,11 +98,11 @@ export default function DriverPage() {
       const payload = { ...form, code: form.code.trim(), name: form.name.trim(), carrierNewId: form.carrierNewId || null };
       if (editingNewId) await updateMstDriver(editingNewId, payload, token);
       else await createMstDriver(payload, token);
-      toast.success(`Driver "${payload.name}" berhasil disimpan.`);
+      toast.success(t('Driver "{name}" berhasil disimpan.', { name: payload.name }));
       setOpenForm(false);
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Gagal menyimpan driver.");
+      toast.error(error instanceof Error ? error.message : t("Gagal menyimpan driver."));
     } finally {
       setIsSaving(false);
     }
@@ -111,8 +113,8 @@ export default function DriverPage() {
       <Toaster position="top-center" />
 
       <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Master Driver</h1>
-        <p className="text-sm text-muted-foreground">Driver beserta SIM-nya. Driver yang terikat ke carrier hanya bisa dipilih untuk carrier itu.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("Master Driver")}</h1>
+        <p className="text-sm text-muted-foreground">{t("Driver beserta SIM-nya. Driver yang terikat ke carrier hanya bisa dipilih untuk carrier itu.")}</p>
       </div>
 
       <div className="flex items-center justify-between">
@@ -124,12 +126,12 @@ export default function DriverPage() {
               setSearch(e.target.value);
               setPage(1);
             }}
-            placeholder="Search code, name, phone, SIM, carrier..."
+            placeholder={t("Search code, name, phone, SIM, carrier...")}
             className="w-full rounded-md px-9 py-2 text-sm"
           />
         </div>
         <Button onClick={openCreate} className="font-medium">
-          + Add Driver
+          {t("+ Add Driver")}
         </Button>
       </div>
 
@@ -137,14 +139,14 @@ export default function DriverPage() {
         <Table containerClassName="rounded-none border-0 bg-transparent">
           <TableHeader>
             <TableRow>
-              <TableHead>Code</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>SIM</TableHead>
-              <TableHead>SIM Expiry</TableHead>
-              <TableHead>Carrier</TableHead>
-              <TableHead>Is Active</TableHead>
-              <TableHead className="w-24 text-center">Actions</TableHead>
+              <TableHead>{t("Code")}</TableHead>
+              <TableHead>{t("Name")}</TableHead>
+              <TableHead>{t("Phone")}</TableHead>
+              <TableHead>{t("SIM")}</TableHead>
+              <TableHead>{t("SIM Expiry")}</TableHead>
+              <TableHead>{t("Carrier")}</TableHead>
+              <TableHead>{t("Is Active")}</TableHead>
+              <TableHead className="w-24 text-center">{t("Actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -158,14 +160,14 @@ export default function DriverPage() {
                   <TableCell>{row.licenseNo || "-"}</TableCell>
                   <TableCell className={expired ? "font-medium text-destructive" : undefined}>
                     {formatPlanDate(row.licenseExpiry)}
-                    {expired ? " (kadaluarsa)" : ""}
+                    {expired ? ` ${t("(kadaluarsa)")}` : ""}
                   </TableCell>
-                  <TableCell>{row.carrierName || <span className="text-muted-foreground">Semua carrier</span>}</TableCell>
+                  <TableCell>{row.carrierName || <span className="text-muted-foreground">{t("Semua carrier")}</span>}</TableCell>
                   <TableCell>
                     {row.isActive ? (
-                      <Badge className="border border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Active</Badge>
+                      <Badge className="border border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">{t("Active")}</Badge>
                     ) : (
-                      <Badge variant="secondary">Inactive</Badge>
+                      <Badge variant="secondary">{t("Inactive")}</Badge>
                     )}
                   </TableCell>
                   <TableCell>
@@ -179,7 +181,7 @@ export default function DriverPage() {
             {(isLoading || paginated.length === 0) && (
               <TableRow>
                 <TableCell colSpan={8} className="py-6 text-center text-muted-foreground">
-                  {isLoading ? "Loading data..." : "No data found"}
+                  {isLoading ? t("Loading data...") : t("No data found")}
                 </TableCell>
               </TableRow>
             )}
@@ -188,14 +190,18 @@ export default function DriverPage() {
 
         <div className="flex flex-col gap-2 border-t px-3 py-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>
-            Showing {Math.min(startIndex + 1, filtered.length || 0)} to {Math.min(startIndex + rowsPerPage, filtered.length)} of {filtered.length} entries
+            {t("Showing {from} to {to} of {total} entries", {
+              from: Math.min(startIndex + 1, filtered.length || 0),
+              to: Math.min(startIndex + rowsPerPage, filtered.length),
+              total: filtered.length,
+            })}
           </span>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="icon" className="h-8 w-8" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="min-w-24 text-center">
-              Page {page} of {totalPages}
+              {t("Page {page} of {total}", { page, total: totalPages })}
             </span>
             <Button variant="outline" size="icon" className="h-8 w-8" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>
               <ChevronRight className="h-4 w-4" />
@@ -207,49 +213,49 @@ export default function DriverPage() {
       <Dialog open={openForm} onOpenChange={setOpenForm}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingNewId ? "Edit Driver" : "Add Driver"}</DialogTitle>
+            <DialogTitle>{editingNewId ? t("Edit Driver") : t("Add Driver")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label>Code</Label>
-                <Input value={form.code} onChange={(e) => setField("code", e.target.value)} placeholder="e.g. DRV-033" />
+                <Label>{t("Code")}</Label>
+                <Input value={form.code} onChange={(e) => setField("code", e.target.value)} placeholder={t("e.g. DRV-033")} />
               </div>
               <div className="space-y-1">
-                <Label>Phone</Label>
+                <Label>{t("Phone")}</Label>
                 <Input value={form.phone} onChange={(e) => setField("phone", e.target.value)} placeholder="08xxxxxxxxxx" />
               </div>
             </div>
             <div className="space-y-1">
-              <Label>Name</Label>
-              <Input value={form.name} onChange={(e) => setField("name", e.target.value)} placeholder="Full name" />
+              <Label>{t("Name")}</Label>
+              <Input value={form.name} onChange={(e) => setField("name", e.target.value)} placeholder={t("Full name")} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label>SIM No</Label>
+                <Label>{t("SIM No")}</Label>
                 <Input value={form.licenseNo} onChange={(e) => setField("licenseNo", e.target.value)} placeholder="SIM B1 Umum ..." />
               </div>
               <div className="space-y-1">
-                <Label>SIM Expiry</Label>
+                <Label>{t("SIM Expiry")}</Label>
                 <Input type="date" value={form.licenseExpiry} onChange={(e) => setField("licenseExpiry", e.target.value)} />
               </div>
             </div>
             <div className="space-y-1">
-              <Label>Carrier</Label>
+              <Label>{t("Carrier")}</Label>
               <Combobox
                 options={carriers.map((c) => ({ value: c.value, label: c.label }))}
                 value={form.carrierNewId}
                 onChange={(v) => setField("carrierNewId", v)}
-                placeholder="Semua carrier (tidak terikat)"
-                searchPlaceholder="Cari carrier..."
+                placeholder={t("Semua carrier (tidak terikat)")}
+                searchPlaceholder={t("Cari carrier...")}
                 clearable
               />
             </div>
             {editingNewId && (
               <div className="flex items-center justify-between rounded-md border p-3">
                 <div className="space-y-0.5">
-                  <Label>Is Active</Label>
-                  <p className="text-xs text-muted-foreground">Driver nonaktif tidak bisa dipilih saat booking.</p>
+                  <Label>{t("Is Active")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("Driver nonaktif tidak bisa dipilih saat booking.")}</p>
                 </div>
                 <Switch checked={form.isActive} onCheckedChange={(checked) => setField("isActive", checked)} disabled={isSaving} />
               </div>
@@ -257,10 +263,10 @@ export default function DriverPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenForm(false)} disabled={isSaving}>
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button onClick={() => void handleSave()} disabled={isSaving}>
-              {isSaving ? "Saving..." : editingNewId ? "Save" : "Add"}
+              {isSaving ? t("Saving...") : editingNewId ? t("Save") : t("Add")}
             </Button>
           </DialogFooter>
         </DialogContent>
