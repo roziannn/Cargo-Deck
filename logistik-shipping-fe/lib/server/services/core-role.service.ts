@@ -1,3 +1,4 @@
+import { clearAccessCache } from "@/lib/server/permissions";
 import { activeLabel, auditCreate, auditUpdate, writeAudit } from "@/lib/server/audit";
 import { HttpError, optString, requireGuid, requireString } from "@/lib/server/http";
 import { coreRoleRepository } from "@/lib/server/repositories/core-role.repository";
@@ -24,6 +25,7 @@ export const coreRoleService = {
       isActive: body.isActive !== false,
       updatedBy: requireString(body.updatedBy, "updatedBy"),
     });
+    clearAccessCache();
     if (!ok || !before) throw new HttpError(404, "Role not found.");
     const after = await coreRoleRepository.getByNewId(newId);
     if (after) {
@@ -51,6 +53,7 @@ export const coreRoleClaimService = {
     if (!role) throw new HttpError(404, "Role not found.");
     const upn = requireString(body.userPrincipalName, "userPrincipalName");
     const employeeName = optString(body.employeeName);
+    clearAccessCache();
     const row = await coreRoleClaimRepository.add({ roleId, upn, employeeName, isActive: body.isActive !== false, by: requireString(body.createdBy, "createdBy") });
     await writeAudit({ module: "Role", action: "ACCESS_CHANGE", entityType: "Role", ref: role.name, note: `Menambahkan anggota ${employeeName ?? upn} (${upn}) ke role '${role.name}'` });
     return row;
@@ -64,6 +67,7 @@ export const coreRoleClaimService = {
     const list = Array.isArray(body.userPrincipalNames) ? body.userPrincipalNames : [];
     const upns = [...new Set(list.map((u) => (typeof u === "string" ? u.trim() : "")).filter(Boolean))];
     await coreRoleClaimRepository.replace(roleId, upns, body.isActive !== false, requireString(body.updatedBy, "updatedBy"));
+    clearAccessCache();
 
     const nameOf = new Map(members.map((m) => [m.userPrincipalName.toLowerCase(), m.employeeName ?? m.userPrincipalName]));
     const before = new Set(members.map((m) => m.userPrincipalName.toLowerCase()));

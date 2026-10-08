@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { DarkModeToggle } from "@/components/darkmode-toggle";
+import { LanguageToggle } from "@/components/language-toggle";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -59,6 +60,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
 
           <div className="flex items-center gap-1">
             <NotificationBell />
+            <LanguageToggle />
             <DarkModeToggle />
           </div>
         </header>

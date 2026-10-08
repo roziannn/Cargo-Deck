@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { Inter } from "next/font/google";
 
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { DEFAULT_LANG, LANG_COOKIE, isLang } from "@/lib/i18n/locale";
+import { I18nProvider } from "@/lib/i18n/provider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -15,12 +18,15 @@ export const metadata: Metadata = {
   description: "Logistic Shipping System",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const saved = (await cookies()).get(LANG_COOKIE)?.value;
+  const lang = isLang(saved) ? saved : DEFAULT_LANG;
+
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html lang={lang} className={inter.variable} suppressHydrationWarning>
       <body className="antialiased font-sans">
         <ThemeProvider attribute="class" enableSystem={false}>
-          {children}
+          <I18nProvider initialLang={lang}>{children}</I18nProvider>
         </ThemeProvider>
       </body>
     </html>

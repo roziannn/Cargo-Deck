@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { signToken } from "@/lib/server/auth";
+import { SESSION_COOKIE, TOKEN_TTL_SECONDS, signToken } from "@/lib/server/auth";
+import { getAccess } from "@/lib/server/permissions";
 import { writeAudit } from "@/lib/server/audit";
 import { query } from "@/lib/server/db";
 import { HttpError, handle, readJson, requireString } from "@/lib/server/http";
@@ -36,7 +37,12 @@ export const POST = (req: Request) =>
 
       const profile = { username: user.username, email: user.email, name: user.name, site: site || user.site || "" };
       await writeAudit({ module: "Auth", action: "LOGIN_SUCCESS", actor: { username: user.username, name: user.name, email: user.email }, note: "Berhasil login ke aplikasi" });
-      return NextResponse.json({ token: signToken(profile), user: profile });
+      const token = signToken(profile);
+      const access = await getAccess(user.email);
+      const res = NextResponse.json({ token, user: profile, menus: access.paths, home: access.paths[0] ?? "/forbidden" });
+      // the same token as a cookie lets the server guard page navigations (see proxy.ts)
+      res.cookies.set(SESSION_COOKIE, token, { httpOnly: true, sameSite: "lax", path: "/", maxAge: TOKEN_TTL_SECONDS, secure: process.env.NODE_ENV === "production" });
+      return res;
     },
     { isPublic: true },
   );

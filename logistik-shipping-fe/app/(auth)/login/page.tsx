@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ApiError } from "@/lib/api-client";
+import { pageAllowed, safeNextPath } from "@/lib/access";
 import { extractTokenFromResponse, extractUserProfile, loginSso, saveAuthSession } from "@/lib/api/auth";
 
 export default function LoginPage() {
@@ -75,7 +76,11 @@ export default function LoginPage() {
         }
       }
 
-      router.push("/dashboard");
+      // the server says which menus this login may open; go to the page asked for if allowed, else the first menu
+      const session = res as { menus?: string[]; home?: string };
+      const wanted = safeNextPath(new URLSearchParams(window.location.search).get("next"));
+      const menus = session.menus ?? [];
+      router.push(wanted && pageAllowed(menus, wanted, false) ? wanted : (session.home ?? "/dashboard"));
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
