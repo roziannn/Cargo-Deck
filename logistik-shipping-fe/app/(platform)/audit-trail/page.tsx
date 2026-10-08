@@ -213,16 +213,11 @@ export default function AuditTrailPage() {
               <TableRow key={row.id} className="align-top">
                 <TableCell>
                   <div className="font-medium">{row.actorName ?? row.username ?? "Tidak diketahui"}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {row.username && row.username !== row.actorName ? row.username : null}
-                    {row.actorRole ? `${row.username && row.username !== row.actorName ? " · " : ""}${row.actorRole}` : null}
-                  </div>
                 </TableCell>
                 <TableCell className="whitespace-nowrap">
-                  <div>{formatAuditDate(row.createdDate, TIME_ZONE)}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {formatAuditTime(row.createdDate, TIME_ZONE)} {timeZoneLabel(TIME_ZONE)}
-                  </div>
+                   <div> 
+                  {formatAuditDate(row.createdDate, TIME_ZONE)} {formatAuditTime(row.createdDate, TIME_ZONE)}</div>
+                 
                 </TableCell>
                 <TableCell>
                   <Badge className={cn("border font-medium hover:bg-inherit", ACTIVITY_STYLE[row.activity] ?? "border-slate-200 bg-slate-100 text-slate-600")}>{auditActivityLabel(row.activity)}</Badge>
