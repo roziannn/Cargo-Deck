@@ -45,12 +45,12 @@ export default function DriverPage() {
       setData(drivers);
       setCarriers(carrierLov);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : );
+      toast.error(error instanceof Error ? error.message : t("Gagal mengambil data driver."));
       setData([]);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const id = window.setTimeout(() => void load(), 0);

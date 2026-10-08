@@ -44,7 +44,7 @@ export function ShippingPlanForm({
     listLocationLov(getStoredAuthToken() ?? undefined)
       .then(setLocations)
       .catch((error) => toast.error(error instanceof Error ? error.message : t("Gagal mengambil data location.")));
-  }, []);
+  }, [t]);
 
   const set = <K extends keyof ShippingPlanHeaderPayload>(key: K, value: ShippingPlanHeaderPayload[K]) =>
     setValues((current) => ({ ...current, [key]: value }));

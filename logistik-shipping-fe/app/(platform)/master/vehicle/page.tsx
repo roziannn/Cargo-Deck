@@ -169,13 +169,13 @@ export default function VehiclePage() {
       const rows = await listMstVehicles(token);
       setData(rows);
     } catch (error) {
-      const message = error instanceof Error ? error.message : ;
+      const message = error instanceof Error ? error.message : t("Gagal mengambil data vehicle.");
       toast.error(message);
       setData([]);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {

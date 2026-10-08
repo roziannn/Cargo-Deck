@@ -64,9 +64,9 @@ function translateNote(note: string, t: (text: string, params?: Record<string, s
   if (m) return t("Surat jalan {no} diterbitkan, ETA {eta} (+{days} hari)", { no: m[1], eta: m[2], days: m[3] });
   m = note.match(/^ETA diubah ke (\S+) \(\+(\d+) hari\)$/);
   if (m) return t("ETA diubah ke {eta} (+{days} hari)", { eta: m[1], days: m[2] });
-  m = note.match(/^Diterima oleh ([^:]+): (.+)$/s);
+  m = note.match(/^Diterima oleh ([^:]+): ([\s\S]+)$/);
   if (m) return t("Diterima oleh {name}: {notes}", { name: m[1], notes: m[2] });
-  m = note.match(/^Diterima oleh (.+)$/s);
+  m = note.match(/^Diterima oleh ([\s\S]+)$/);
   if (m) return t("Diterima oleh {name}", { name: m[1] });
   return t(note);
 }

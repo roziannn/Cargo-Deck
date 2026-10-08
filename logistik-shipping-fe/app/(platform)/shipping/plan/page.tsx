@@ -40,7 +40,7 @@ function ShippingPlanList() {
       .then(setData)
       .catch((error) => toast.error(error instanceof Error ? error.message : t("Gagal mengambil shipping plan.")))
       .finally(() => setIsLoading(false));
-  }, []);
+  }, [t]);
 
   const filtered = useMemo(() => {
     const keyword = search.trim().toLowerCase();

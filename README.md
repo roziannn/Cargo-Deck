@@ -154,6 +154,14 @@ Daftar menu itu juga yang dipakai untuk **menjaga akses**, bukan hanya mengisi s
 
 Akses saat ini berlaku per menu. Centang tombol (function) per menu sudah tersimpan, tetapi belum dipakai untuk membatasi aksi tertentu seperti approve.
 
+## Bahasa
+
+Antarmukanya bisa Bahasa Indonesia atau English. Pilihannya ada di tombol **ID/EN** di header (di halaman login juga ada). Pilihan disimpan di cookie `cd_lang`, jadi halaman langsung tampil dengan bahasa yang benar tanpa berkedip. Bahasa bawaannya Indonesia. Tanggal dan angka ikut berganti formatnya.
+
+Cara kerjanya sengaja sederhana. Teks di kode itu sendiri adalah kuncinya, ditulis dalam bahasa yang sudah dipakai di sana, dan kamus hanya berisi bahasa satunya: `t("Simpan")` tampil "Save" di English, `t("Save")` tampil "Simpan" di Indonesia. Teks yang belum ada terjemahannya tampil apa adanya, jadi tidak pernah kosong. Kamusnya ada di `lib/i18n/messages/`, satu file per area (`common`, `chrome`, `dashboard`, `plan`, `planDialogs`, `incidentAudit`, `master`, `settings`) dan digabung per bahasa di `index.ts`. Untuk teks baru: pakai `const { t } = useI18n()` lalu `t("teks")`, dan tambahkan terjemahannya ke file area itu. Kalimat dengan isian memakai `{nama}`, misalnya `t("Menampilkan {from} sampai {to}", { from, to })`.
+
+Yang belum ikut berganti bahasa: pesan error yang dikirim server, catatan audit trail (tersimpan sekali dalam bahasa Indonesia saat kejadian), isi tabel dari database, dan halaman lama `shipping/container-load/form` yang sudah tidak ditautkan dari mana pun.
+
 ## API
 
 Semua di bawah `/api/v1`. Format JSON, nama field camelCase.

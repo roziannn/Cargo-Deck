@@ -127,7 +127,7 @@ export default function DeliveryNotePage() {
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="bg-neutral-100">
-                <th className="w-8 border border-black px-2 py-1.5 text-center">{t("No")}</th>
+                <th className="w-8 border border-black px-2 py-1.5 text-center">No</th>
                 <th className="w-24 border border-black px-2 py-1.5 text-left">{t("Kode")}</th>
                 <th className="border border-black px-2 py-1.5 text-left">{t("Nama barang")}</th>
                 <th className="w-24 border border-black px-2 py-1.5 text-right">{t("Dikirim (karton)")}</th>

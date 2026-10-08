@@ -61,12 +61,12 @@ export default function LocationPage() {
     try {
       setData(await listMstLocations(getStoredAuthToken() ?? undefined));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : );
+      toast.error(error instanceof Error ? error.message : t("Gagal mengambil data location."));
       setData([]);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const id = window.setTimeout(() => void load(), 0);

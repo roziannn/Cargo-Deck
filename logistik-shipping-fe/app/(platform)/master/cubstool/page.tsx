@@ -171,13 +171,13 @@ export default function CubstoolPage() {
       const rows = await listMstCubstools(token);
       setData(rows);
     } catch (error) {
-      const message = error instanceof Error ? error.message : ;
+      const message = error instanceof Error ? error.message : t("Gagal mengambil data cubstool.");
       toast.error(message);
       setData([]);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {

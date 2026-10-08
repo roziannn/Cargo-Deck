@@ -742,7 +742,7 @@ function ShippingSimulation() {
                   </div>
                   <div className="rounded-lg bg-slate-50 py-2 dark:bg-slate-800">
                     <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{layout.loadHeight.toFixed(2)} m</div>
-                    <div className="text-slate-500">{t("Tinggi")}</div>
+                    <div className="text-slate-500">{t("Height")}</div>
                   </div>
                 </div>
               </div>
