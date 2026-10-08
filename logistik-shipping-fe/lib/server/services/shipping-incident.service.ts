@@ -2,11 +2,21 @@ import { HttpError, currentActor, optNumber, optString, requireDate, requireEnum
 import {
   INCIDENT_STATUSES,
   INCIDENT_TYPES,
+  OPEN_INCIDENT_STATUSES,
   shippingIncidentRepository,
   type IncidentRow,
+  type IncidentStatus,
 } from "@/lib/server/repositories/shipping-incident.repository";
 import { shippingPlanRepository } from "@/lib/server/repositories/shipping-plan.repository";
 import { INCIDENT_REPORT_DAYS, canReportIncident } from "@/lib/server/services/shipping-plan.service";
+
+const STATUS_LABEL: Record<IncidentStatus, string> = {
+  OPEN: "Baru",
+  IN_PROGRESS: "Diproses",
+  CLAIM_FILED: "Klaim diajukan",
+  RESOLVED: "Selesai",
+  REJECTED: "Ditolak",
+};
 
 async function getOrThrow(newId: string) {
   const row = await shippingIncidentRepository.getByNewId(requireGuid(newId, "incident id"));
@@ -41,6 +51,15 @@ export const shippingIncidentService = {
     if (!plan) throw new HttpError(404, "Shipping plan not found.");
     if (!canReportIncident(plan)) {
       throw new HttpError(409, `Insiden hanya bisa dilaporkan untuk plan yang sedang dikirim atau selesai dalam ${INCIDENT_REPORT_DAYS} hari terakhir (status ${plan.status}).`);
+    }
+
+    // one open incident per plan: it has to be closed before the next one can be reported
+    const open = (await shippingIncidentRepository.getByPlan(plan.newId)).find((i) => OPEN_INCIDENT_STATUSES.includes(i.status));
+    if (open) {
+      throw new HttpError(
+        409,
+        `Plan ${plan.planNo} masih punya insiden ${open.incidentNo} dengan status **${STATUS_LABEL[open.status]}**. Selesaikan atau tolak insiden itu dulu sebelum melaporkan yang baru.`,
+      );
     }
 
     const description = requireString(body.description, "description");

@@ -6,11 +6,14 @@ import { useCallback, useEffect, useState } from "react";
 import { Ban, CalendarClock, ChevronLeft, CircleCheck, FileWarning, Hourglass, Inbox, Receipt, Save } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
 
+import { Arrow, RouteText } from "@/components/route-text";
 import { IncidentStatusBadge } from "@/components/shipping-incident-status";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getStoredAuthToken } from "@/lib/api/auth";
+import { listCarrierLov, type CarrierLovItem } from "@/lib/api/mst-logistics";
 import {
   INCIDENT_STATUS_LABEL,
   INCIDENT_TYPE_LABEL,
@@ -56,6 +59,7 @@ export default function ShippingIncidentDetailPage() {
   const [claimAmount, setClaimAmount] = useState("");
   const [claimParty, setClaimParty] = useState("");
   const [note, setNote] = useState("");
+  const [carriers, setCarriers] = useState<CarrierLovItem[]>([]);
 
   const fill = useCallback((data: ShippingIncidentDetail) => {
     setIncident(data);
@@ -72,6 +76,9 @@ export default function ShippingIncidentDetailPage() {
       getShippingIncident(newId, getStoredAuthToken() ?? undefined)
         .then(fill)
         .catch((e) => setError(e instanceof Error ? e.message : "Gagal mengambil insiden."));
+      listCarrierLov(getStoredAuthToken() ?? undefined)
+        .then(setCarriers)
+        .catch(() => setCarriers([]));
     }, 0);
     return () => window.clearTimeout(id);
   }, [newId, fill]);
@@ -154,7 +161,7 @@ export default function ShippingIncidentDetailPage() {
                 </Link>
               </Field>
               <Field label="Rute">
-                {incident.originName} → {incident.destinationName}
+                <RouteText from={incident.originName} to={incident.destinationName} />
               </Field>
               <Field label="Carrier">{incident.carrierName || "-"}</Field>
               <Field label="Estimasi selesai">
@@ -223,7 +230,15 @@ export default function ShippingIncidentDetailPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>Pihak yang ditagih{status === "CLAIM_FILED" && <span className="text-red-600"> *</span>}</Label>
-                  <Input value={claimParty} onChange={(e) => setClaimParty(e.target.value)} placeholder={incident.carrierName ?? "Carrier / asuransi"} maxLength={100} />
+                  <Combobox
+                    options={carriers.map((c) => ({ value: c.label, label: c.label, description: c.type === "OWN" ? "Armada sendiri" : "3PL" }))}
+                    value={claimParty}
+                    onChange={setClaimParty}
+                    placeholder={incident.carrierName ?? "Carrier / asuransi"}
+                    searchPlaceholder="Cari carrier atau ketik pihak lain..."
+                    allowCustom
+                    clearable
+                  />
                 </div>
               </div>
             )}
@@ -270,7 +285,13 @@ export default function ShippingIncidentDetailPage() {
                 <span className={cn("absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-background", index === 0 ? "bg-blue-600" : "bg-muted-foreground/40")} />
                 <div className="text-sm font-medium">
                   {h.fromStatus && h.fromStatus !== h.toStatus
-                    ? `${INCIDENT_STATUS_LABEL[h.fromStatus as IncidentStatus] ?? h.fromStatus} → ${INCIDENT_STATUS_LABEL[h.toStatus]}`
+                    ? (
+                        <>
+                          {INCIDENT_STATUS_LABEL[h.fromStatus as IncidentStatus] ?? h.fromStatus}
+                          <Arrow />
+                          {INCIDENT_STATUS_LABEL[h.toStatus]}
+                        </>
+                      )
                     : INCIDENT_STATUS_LABEL[h.toStatus]}
                 </div>
                 {h.note && <div className="text-sm text-muted-foreground">{h.note}</div>}

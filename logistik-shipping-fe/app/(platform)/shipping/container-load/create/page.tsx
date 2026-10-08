@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
 
+import { RouteText } from "@/components/route-text";
 import { TruckScene, type CameraPreset } from "@/components/truck-scene";
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -431,7 +432,7 @@ function ShippingSimulation() {
                 <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-slate-900 dark:text-slate-300">{plan.status}</span>
               </div>
               <div className="mt-1 text-slate-600 dark:text-slate-300">
-                {plan.originName} → {plan.destinationName}
+                <RouteText from={plan.originName} to={plan.destinationName} />
               </div>
               {planLocked ? <div className="mt-1 text-xs font-medium text-amber-700">Plan {plan.status.toLowerCase()} — tampilan saja, tidak bisa diubah.</div> : null}
             </div>

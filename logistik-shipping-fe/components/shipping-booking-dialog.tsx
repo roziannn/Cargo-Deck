@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 
+import { RouteText } from "@/components/route-text";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +20,6 @@ import {
   type ShippingPlanDetail,
 } from "@/lib/api/shipping-plan";
 
-const SELECT_CLASS = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm";
 
 const toInt = (value: string) => {
   const n = Number(value.replace(/\D/g, ""));
@@ -126,7 +127,7 @@ export function ShippingBookingDialog({
         <DialogHeader>
           <DialogTitle>{plan.status === "BOOKED" ? "Ubah Booking" : "Booking Armada"} — {plan.planNo}</DialogTitle>
           <DialogDescription>
-            {plan.originName} → {plan.destinationName} · kirim {formatPlanDate(plan.plannedShipDate)} · {plan.vehicleName}
+            <RouteText from={plan.originName} to={plan.destinationName} /> · kirim {formatPlanDate(plan.plannedShipDate)} · {plan.vehicleName}
           </DialogDescription>
         </DialogHeader>
 
@@ -134,33 +135,27 @@ export function ShippingBookingDialog({
           <div className="space-y-4">
             <div className="space-y-1">
               <Label>Carrier</Label>
-              <select
-                className={SELECT_CLASS}
+              <Combobox
+                options={carriers.map((c) => ({ value: c.value, label: c.label, description: c.type === "OWN" ? "Armada sendiri" : "3PL" }))}
                 value={carrierNewId}
-                onChange={(e) => {
-                  setCarrierNewId(e.target.value);
+                onChange={(v) => {
+                  setCarrierNewId(v);
                   setDriverNewId("");
                 }}
-              >
-                <option value="">Pilih carrier</option>
-                {carriers.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label} ({c.type === "OWN" ? "armada sendiri" : "3PL"})
-                  </option>
-                ))}
-              </select>
+                placeholder="Pilih carrier"
+                searchPlaceholder="Cari carrier..."
+              />
             </div>
             <div className="space-y-1">
               <Label>Driver</Label>
-              <select className={SELECT_CLASS} value={driverNewId} onChange={(e) => setDriverNewId(e.target.value)} disabled={!carrierNewId}>
-                <option value="">{carrierNewId ? "Pilih driver" : "Pilih carrier dulu"}</option>
-                {availableDrivers.map((d) => (
-                  <option key={d.value} value={d.value} disabled={licenseExpired(d)}>
-                    {d.label}
-                    {licenseExpired(d) ? " — SIM kadaluarsa" : ""}
-                  </option>
-                ))}
-              </select>
+              <Combobox
+                options={availableDrivers.map((d) => ({ value: d.value, label: d.label, description: licenseExpired(d) ? "SIM kadaluarsa" : undefined, disabled: licenseExpired(d) }))}
+                value={driverNewId}
+                onChange={setDriverNewId}
+                disabled={!carrierNewId}
+                placeholder={carrierNewId ? "Pilih driver" : "Pilih carrier dulu"}
+                searchPlaceholder="Cari driver..."
+              />
             </div>
             <div className="space-y-1">
               <Label>Nomor Polisi</Label>

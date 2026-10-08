@@ -30,6 +30,10 @@ export type DashboardData = {
   range: DashboardRange;
   /** One trend point per day (periods up to 31 days) or per week. */
   bucket: "day" | "week";
+  /** Days the period reaches past today because of plans scheduled ahead. */
+  horizon: number;
+  /** Date of the trend point that contains today. */
+  todayBucket: string | null;
   kpis: {
     plans: Kpi;
     inTransit: Kpi;

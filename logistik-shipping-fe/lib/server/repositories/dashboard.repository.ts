@@ -21,6 +21,7 @@ export type VehicleTypeRow = { type: string; plans: number; avgUtilization: numb
 export type IncidentTypeRow = { type: string; total: number; open: number };
 
 export type SnapshotRow = {
+  today: string;
   inTransit: number;
   waitingApproval: number;
   waitingBooking: number;
@@ -49,10 +50,12 @@ export type PlanSummaryRow = {
  * so offset = days gives the period right before it. Cancelled plans are left out of volume figures.
  */
 const IN_PERIOD = `p.planned_ship_date BETWEEN (CURRENT_DATE - @offset::int) - (@days::int - 1) AND CURRENT_DATE - @offset::int`;
+/** The selected period plus everything scheduled after it: plans are usually made days ahead, so future ones must show up too. */
+const CURRENT = `p.planned_ship_date >= CURRENT_DATE - (@days::int - 1)`;
 const SHIPPED = `p.status IN ('DISPATCHED', 'COMPLETED')`;
 
 export const dashboardRepository = {
-  async kpi(days: number, offset: number) {
+  async kpi(days: number, offset: number, includeFuture = false) {
     const rows = await query<KpiRow>(
       `SELECT COUNT(*) FILTER (WHERE p.status <> 'CANCELLED')::int AS plans,
               COUNT(*) FILTER (WHERE p.status = 'CANCELLED')::int AS cancelled,
@@ -62,17 +65,27 @@ export const dashboardRepository = {
               COALESCE(SUM(p.total_weight_kg) FILTER (WHERE p.status <> 'CANCELLED'), 0)::float8 AS weight_kg,
               COALESCE(SUM(p.total_cost) FILTER (WHERE ${SHIPPED}), 0)::float8 AS freight_cost,
               AVG(p.utilization_pct) FILTER (WHERE p.status <> 'CANCELLED')::float8 AS avg_utilization
-       FROM shipping_plan p WHERE ${IN_PERIOD}`,
+       FROM shipping_plan p WHERE ${includeFuture ? CURRENT : IN_PERIOD}`,
       { days, offset },
     );
     return rows[0];
   },
 
   statusCounts: (days: number) =>
-    query<StatusCountRow>(`SELECT p.status, COUNT(*)::int AS count FROM shipping_plan p WHERE ${IN_PERIOD} GROUP BY p.status`, { days, offset: 0 }),
+    query<StatusCountRow>(`SELECT p.status, COUNT(*)::int AS count FROM shipping_plan p WHERE ${CURRENT} GROUP BY p.status`, { days }),
 
-  /** One row per day (or week) of the period, empty buckets included. */
-  trend: (days: number, bucket: Bucket) => {
+  /** How many days past today the period reaches, because of plans scheduled ahead (at most 90). */
+  async horizon(days: number) {
+    const rows = await query<{ horizon: number }>(
+      `SELECT COALESCE(LEAST(GREATEST(MAX(p.planned_ship_date) - CURRENT_DATE, 0), 90), 0)::int AS horizon
+       FROM shipping_plan p WHERE p.status <> 'CANCELLED' AND ${CURRENT}`,
+      { days },
+    );
+    return rows[0].horizon;
+  },
+
+  /** One row per day (or week) from the start of the period to today plus `horizon`, empty buckets included. */
+  trend: (days: number, bucket: Bucket, horizon: number) => {
     const trunc = (col: string) => (bucket === "week" ? `date_trunc('week', ${col})::date` : col);
     const step = bucket === "week" ? "interval '7 days'" : "interval '1 day'";
     return query<TrendRow>(
@@ -81,11 +94,11 @@ export const dashboardRepository = {
               COALESCE(SUM(p.total_weight_kg), 0)::float8 AS weight_kg,
               COALESCE(SUM(p.total_cost) FILTER (WHERE ${SHIPPED}), 0)::float8 AS cost
        FROM (SELECT gs::date AS bucket
-             FROM generate_series(${trunc("(CURRENT_DATE - (@days::int - 1))")}::timestamp, CURRENT_DATE::timestamp, ${step}) gs) b
+             FROM generate_series(${trunc("(CURRENT_DATE - (@days::int - 1))")}::timestamp, (CURRENT_DATE + @horizon::int)::timestamp, ${step}) gs) b
        LEFT JOIN shipping_plan p
-              ON p.status <> 'CANCELLED' AND ${IN_PERIOD} AND ${trunc("p.planned_ship_date")} = b.bucket
+              ON p.status <> 'CANCELLED' AND ${CURRENT} AND p.planned_ship_date <= CURRENT_DATE + @horizon::int AND ${trunc("p.planned_ship_date")} = b.bucket
        GROUP BY b.bucket ORDER BY b.bucket`,
-      { days, offset: 0 },
+      { days, horizon },
     );
   },
 
@@ -94,9 +107,9 @@ export const dashboardRepository = {
       `SELECT d.name, COUNT(*)::int AS plans, COALESCE(SUM(p.total_weight_kg), 0)::float8 AS weight_kg,
               COALESCE(SUM(p.total_cost) FILTER (WHERE ${SHIPPED}), 0)::float8 AS cost
        FROM shipping_plan p JOIN mst_location d ON d.new_id = p.destination_location_new_id
-       WHERE p.status <> 'CANCELLED' AND ${IN_PERIOD}
+       WHERE p.status <> 'CANCELLED' AND ${CURRENT}
        GROUP BY d.name ORDER BY plans DESC, d.name LIMIT 6`,
-      { days, offset: 0 },
+      { days },
     ),
 
   carriers: (days: number) =>
@@ -106,18 +119,18 @@ export const dashboardRepository = {
                WHERE q.carrier_new_id = c.new_id AND q.status IN ('DISPATCHED', 'COMPLETED')
                  AND q.planned_ship_date BETWEEN CURRENT_DATE - (@days::int - 1) AND CURRENT_DATE)::int AS incidents
        FROM shipping_plan p JOIN mst_carrier c ON c.new_id = p.carrier_new_id
-       WHERE ${SHIPPED} AND ${IN_PERIOD}
+       WHERE ${SHIPPED} AND ${CURRENT}
        GROUP BY c.new_id, c.name ORDER BY plans DESC, c.name LIMIT 6`,
-      { days, offset: 0 },
+      { days },
     ),
 
   vehicleTypes: (days: number) =>
     query<VehicleTypeRow>(
-      `SELECT v.type, COUNT(*)::int AS plans, AVG(p.utilization_pct)::float8 AS avg_utilization
+      `SELECT COALESCE(NULLIF(v.type, ''), 'Tanpa jenis') AS type, COUNT(*)::int AS plans, AVG(p.utilization_pct)::float8 AS avg_utilization
        FROM shipping_plan p JOIN mst_vehicle v ON v.new_id = p.vehicle_new_id
-       WHERE p.status <> 'CANCELLED' AND ${IN_PERIOD}
-       GROUP BY v.type ORDER BY plans DESC, v.type LIMIT 8`,
-      { days, offset: 0 },
+       WHERE p.status <> 'CANCELLED' AND ${CURRENT}
+       GROUP BY COALESCE(NULLIF(v.type, ''), 'Tanpa jenis') ORDER BY plans DESC, 1 LIMIT 8`,
+      { days },
     ),
 
   incidentTypes: (days: number) =>
@@ -132,7 +145,8 @@ export const dashboardRepository = {
   /** Things that are true right now, whatever the selected period. */
   async snapshot() {
     const rows = await query<SnapshotRow>(
-      `SELECT (SELECT COUNT(*) FROM shipping_plan WHERE status = 'DISPATCHED')::int AS in_transit,
+      `SELECT to_char(CURRENT_DATE, 'YYYY-MM-DD') AS today,
+              (SELECT COUNT(*) FROM shipping_plan WHERE status = 'DISPATCHED')::int AS in_transit,
               (SELECT COUNT(*) FROM shipping_plan WHERE status = 'PLANNED')::int AS waiting_approval,
               (SELECT COUNT(*) FROM shipping_plan WHERE status = 'APPROVED')::int AS waiting_booking,
               (SELECT COUNT(*) FROM shipping_plan WHERE status = 'DISPATCHED' AND eta_date < CURRENT_DATE)::int AS past_eta,
@@ -152,7 +166,7 @@ export const dashboardRepository = {
     ),
 
   recent: (days: number) =>
-    query<PlanSummaryRow>(`${PLAN_SELECT} WHERE ${IN_PERIOD} ORDER BY p.planned_ship_date DESC, p.id DESC LIMIT 300`, { days, offset: 0 }),
+    query<PlanSummaryRow>(`${PLAN_SELECT} WHERE ${CURRENT} ORDER BY p.planned_ship_date DESC, p.id DESC LIMIT 300`, { days }),
 };
 
 const PLAN_SELECT = `

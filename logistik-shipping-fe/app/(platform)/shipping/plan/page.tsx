@@ -6,6 +6,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Eye, Plus, Search } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
 
+import { RouteText } from "@/components/route-text";
 import { PlanStatusBadge, PriorityBadge } from "@/components/shipping-plan-status";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -120,7 +121,7 @@ function ShippingPlanList() {
               <TableRow key={row.newId}>
                 <TableCell className="font-medium">{row.planNo}</TableCell>
                 <TableCell>
-                  {row.originName} → {row.destinationName}
+                  <RouteText from={row.originName} to={row.destinationName} />
                 </TableCell>
                 <TableCell>{formatPlanDate(row.plannedShipDate)}</TableCell>
                 <TableCell>{formatPlanDate(row.requestedDeliveryDate)}</TableCell>
