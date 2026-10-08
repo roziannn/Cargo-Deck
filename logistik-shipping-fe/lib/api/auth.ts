@@ -244,6 +244,16 @@ export function getStoredAuthUser(): AuthUserProfile | null {
   }
 }
 
+/** Tells the server the user logged out (for the audit trail); a failure here must not stop the logout. */
+export async function notifyLogout(token?: string) {
+  if (!token) return;
+  try {
+    await apiFetch(apiPath("Auth/logout"), { method: "POST", token });
+  } catch {
+    // ignore: the local session is cleared anyway
+  }
+}
+
 export function clearAuthSession() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(TOKEN_STORAGE_KEY);

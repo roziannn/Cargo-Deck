@@ -4,7 +4,7 @@ import * as React from "react";
 import { ChevronsUpDown, LogOut, UserCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-import { clearAuthSession } from "@/lib/api/auth";
+import { clearAuthSession, getStoredAuthToken, notifyLogout } from "@/lib/api/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -58,7 +58,8 @@ export function NavUser({
     return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "US";
   }, [displayName]);
 
-  function handleLogout() {
+  async function handleLogout() {
+    await notifyLogout(getStoredAuthToken() ?? undefined);
     clearAuthSession();
     router.push("/login");
   }

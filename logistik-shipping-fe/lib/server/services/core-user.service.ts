@@ -1,3 +1,4 @@
+import { activeLabel, auditCreate, auditUpdate, writeAudit, type AuditField } from "@/lib/server/audit";
 import { HttpError, currentActor, currentUser, optString, requireString } from "@/lib/server/http";
 import { coreUserRepository, type CoreUserInput } from "@/lib/server/repositories/core-user.repository";
 
@@ -32,6 +33,14 @@ function mapDuplicate(err: unknown): never {
   throw err;
 }
 
+const USER_FIELDS: AuditField[] = [
+  { key: "username", label: "Username" },
+  { key: "email", label: "Email" },
+  { key: "name", label: "Nama" },
+  { key: "site", label: "Site" },
+  { key: "isActive", label: "Status", format: activeLabel },
+];
+
 export const coreUserService = {
   getAll: () => coreUserRepository.getAll(),
 
@@ -39,7 +48,9 @@ export const coreUserService = {
     const input = userInput(body);
     const password = checkPassword(typeof body.password === "string" ? body.password : "");
     const by = await currentActor();
-    return coreUserRepository.create({ ...input, password, createdBy: by }).catch(mapDuplicate);
+    const row = await coreUserRepository.create({ ...input, password, createdBy: by }).catch(mapDuplicate);
+    await auditCreate({ module: "User", entityType: "User", ref: row.name, detail: `username ${row.username}, ${row.email}` });
+    return row;
   },
 
   async update(id: number, body: Record<string, unknown>) {
@@ -58,6 +69,9 @@ export const coreUserService = {
     const by = me.name || me.preferred_username;
     const row = await coreUserRepository.update(id, existing.email, { ...input, password, updatedBy: by }).catch(mapDuplicate);
     if (!row) throw new HttpError(404, "User not found.");
+    await auditUpdate({ module: "User", entityType: "User", ref: existing.name, before: existing, after: row, fields: USER_FIELDS });
+    // the password itself is never written anywhere, only the fact that it changed
+    if (password) await writeAudit({ module: "User", action: "PASSWORD_CHANGE", entityType: "User", ref: existing.name, note: `Mengganti password user '${existing.name}'` });
     return row;
   },
 };

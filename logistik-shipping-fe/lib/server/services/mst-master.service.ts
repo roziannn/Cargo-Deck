@@ -1,3 +1,4 @@
+import { activeLabel, auditCreate, auditUpdate, rupiah, type AuditField } from "@/lib/server/audit";
 import { HttpError, optNumber, optString, requireGuid, requireString } from "@/lib/server/http";
 import { mstCubstoolRepository } from "@/lib/server/repositories/mst-cubstool.repository";
 import { mstVehicleRepository } from "@/lib/server/repositories/mst-vehicle.repository";
@@ -22,6 +23,21 @@ function vehicleInput(body: Record<string, unknown>) {
   };
 }
 
+const VEHICLE_FIELDS: AuditField[] = [
+  { key: "name", label: "Nama" },
+  { key: "type", label: "Jenis" },
+  { key: "climate", label: "Pendingin" },
+  { key: "cbm", label: "Volume (CBM)" },
+  { key: "dimensionsL", label: "Panjang (m)" },
+  { key: "dimensionsW", label: "Lebar (m)" },
+  { key: "floorArea", label: "Luas lantai (m2)" },
+  { key: "maxHeight", label: "Tinggi maks (m)" },
+  { key: "maxPayload", label: "Muatan maks (kg)" },
+  { key: "baseFee", label: "Biaya dasar", format: rupiah },
+  { key: "ratePerKm", label: "Tarif per km", format: rupiah },
+  { key: "isActive", label: "Status", format: activeLabel },
+];
+
 export const mstVehicleService = {
   getAll: () => mstVehicleRepository.getAll(),
   getLov: () => mstVehicleRepository.getLov(),
@@ -32,11 +48,18 @@ export const mstVehicleService = {
     return row;
   },
 
-  create: (body: Record<string, unknown>) => mstVehicleRepository.create({ ...vehicleInput(body), createdBy: actor(body) }),
+  async create(body: Record<string, unknown>) {
+    const row = await mstVehicleRepository.create({ ...vehicleInput(body), createdBy: actor(body) });
+    await auditCreate({ module: "Master Vehicle", entityType: "Vehicle", ref: row.name, detail: [row.type, row.maxPayload ? `muatan maks ${row.maxPayload} kg` : null].filter(Boolean).join(", ") || undefined });
+    return row;
+  },
 
   async update(newId: string, body: Record<string, unknown>) {
-    const row = await mstVehicleRepository.update(requireGuid(newId, "vehicle id"), { ...vehicleInput(body), updatedBy: actor(body) });
-    if (!row) throw new HttpError(404, "Vehicle not found.");
+    const id = requireGuid(newId, "vehicle id");
+    const before = await mstVehicleRepository.getByNewId(id);
+    const row = await mstVehicleRepository.update(id, { ...vehicleInput(body), updatedBy: actor(body) });
+    if (!row || !before) throw new HttpError(404, "Vehicle not found.");
+    await auditUpdate({ module: "Master Vehicle", entityType: "Vehicle", ref: before.name, before, after: row, fields: VEHICLE_FIELDS });
     return row;
   },
 };
@@ -54,15 +77,33 @@ function cubstoolInput(body: Record<string, unknown>) {
   };
 }
 
+const CUBSTOOL_FIELDS: AuditField[] = [
+  { key: "name", label: "Nama" },
+  { key: "itemCode", label: "Kode item" },
+  { key: "length", label: "Panjang" },
+  { key: "width", label: "Lebar" },
+  { key: "height", label: "Tinggi" },
+  { key: "weight", label: "Berat" },
+  { key: "color", label: "Warna" },
+  { key: "isActive", label: "Status", format: activeLabel },
+];
+
 export const mstCubstoolService = {
   getAll: () => mstCubstoolRepository.getAll(),
   getLov: () => mstCubstoolRepository.getLov(),
 
-  create: (body: Record<string, unknown>) => mstCubstoolRepository.create({ ...cubstoolInput(body), createdBy: actor(body) }),
+  async create(body: Record<string, unknown>) {
+    const row = await mstCubstoolRepository.create({ ...cubstoolInput(body), createdBy: actor(body) });
+    await auditCreate({ module: "Master Cubstool", entityType: "Cubstool", ref: row.name, detail: `kode ${row.itemCode}` });
+    return row;
+  },
 
   async update(newId: string, body: Record<string, unknown>) {
-    const row = await mstCubstoolRepository.update(requireGuid(newId, "cubstool id"), { ...cubstoolInput(body), updatedBy: actor(body) });
-    if (!row) throw new HttpError(404, "Cubstool not found.");
+    const id = requireGuid(newId, "cubstool id");
+    const before = await mstCubstoolRepository.getByNewId(id);
+    const row = await mstCubstoolRepository.update(id, { ...cubstoolInput(body), updatedBy: actor(body) });
+    if (!row || !before) throw new HttpError(404, "Cubstool not found.");
+    await auditUpdate({ module: "Master Cubstool", entityType: "Cubstool", ref: before.name, before, after: row, fields: CUBSTOOL_FIELDS });
     return row;
   },
 };

@@ -366,10 +366,14 @@ export const shippingPlanRepository = {
          WHERE p.status = 'DISPATCHED' AND p.eta_date IS NOT NULL
            AND p.eta_date + p.grace_days < CURRENT_DATE
            AND NOT EXISTS (SELECT 1 FROM shipping_incident i WHERE i.plan_new_id = p.new_id AND i.status IN ('OPEN', 'IN_PROGRESS', 'CLAIM_FILED'))
-         RETURNING p.new_id
+         RETURNING p.new_id, p.plan_no
+       ), history AS (
+         INSERT INTO shipping_plan_history (plan_new_id, from_status, to_status, note, changed_by)
+         SELECT new_id, 'DISPATCHED', 'COMPLETED', 'Selesai otomatis: tidak ada insiden sampai batas ETA', 'system' FROM done
        )
-       INSERT INTO shipping_plan_history (plan_new_id, from_status, to_status, note, changed_by)
-       SELECT new_id, 'DISPATCHED', 'COMPLETED', 'Selesai otomatis: tidak ada insiden sampai batas ETA', 'system' FROM done`,
+       INSERT INTO core_audit_trail (username, actor_name, module, activity, entity_type, entity_ref, note)
+       SELECT 'system', 'System', 'Shipping Plan', 'STATUS_CHANGE', 'Plan', plan_no,
+              'Plan ''' || plan_no || ''' selesai otomatis (status DISPATCHED menjadi COMPLETED): lewat ETA dan masa tunggu tanpa insiden' FROM done`,
     );
   },
 

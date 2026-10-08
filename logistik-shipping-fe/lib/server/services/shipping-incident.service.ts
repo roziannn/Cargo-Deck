@@ -1,4 +1,5 @@
 import { HttpError, currentActor, optNumber, optString, requireDate, requireEnum, requireGuid, requireString } from "@/lib/server/http";
+import { incidentAudit } from "@/lib/server/audit-shipping";
 import {
   INCIDENT_STATUSES,
   INCIDENT_TYPES,
@@ -75,6 +76,8 @@ export const shippingIncidentService = {
       },
       by,
     );
+    const created = await getOrThrow(newId);
+    await incidentAudit.created(created);
     return this.getByNewId(newId);
   },
 
@@ -96,6 +99,8 @@ export const shippingIncidentService = {
     await shippingIncidentRepository.update(incident.newId, incident, { status, targetDate: optDate(body.targetDate, "targetDate"), solution, ...claim, note: optString(body.note) }, by);
     // closing the last open incident lets a plan past its ETA complete
     await shippingPlanRepository.autoComplete();
+    const after = await getOrThrow(incident.newId);
+    await incidentAudit.updated(incident, after, optString(body.note));
     return this.getByNewId(incident.newId);
   },
 };
