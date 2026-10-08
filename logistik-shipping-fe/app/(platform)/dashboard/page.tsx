@@ -176,6 +176,9 @@ export default function DashboardPage() {
     stroke: { width: 2, curve: "monotoneCubic" },
     fill: { type: "gradient", gradient: { shadeIntensity: 1, opacityFrom: 0.28, opacityTo: 0.02, stops: [0, 95] } },
     markers: { size: 0, hover: { size: 5 }, strokeColors: theme.surface, strokeWidth: 2 },
+    ...(data.horizon > 0 && data.todayBucket
+      ? { annotations: { xaxis: [{ x: bucketLabel(data.todayBucket, data.bucket), borderColor: theme.muted, strokeDashArray: 4, label: { text: "Hari ini", orientation: "horizontal" as const, borderWidth: 0, style: { color: theme.text, background: theme.grid, fontSize: "11px" } } }] } }
+      : {}),
     xaxis: { ...base.xaxis, categories: data.trend.map((t) => bucketLabel(t.bucket, data.bucket)), tickAmount: Math.min(data.trend.length - 1, 8), tooltip: { enabled: false } },
     yaxis: { ...base.yaxis, min: 0, labels: { style: { colors: theme.muted }, formatter: (v: number) => formatMetric(metric, v) } },
     tooltip: { theme: theme.mode, y: { formatter: (v: number) => formatMetric(metric, v) } },
@@ -284,7 +287,7 @@ export default function DashboardPage() {
             <Card
               className="lg:col-span-2"
               title="Tren pengiriman"
-              subtitle={`Per ${data.bucket === "day" ? "hari" : "minggu"}, berdasarkan tanggal berangkat`}
+              subtitle={`Per ${data.bucket === "day" ? "hari" : "minggu"}, berdasarkan tanggal berangkat${data.horizon > 0 ? `, termasuk jadwal ${data.horizon} hari ke depan` : ""}`}
               action={
                 <div className="inline-flex rounded-md border p-0.5" role="group" aria-label="Metrik">
                   {METRICS.map((m) => (
@@ -438,8 +441,8 @@ export default function DashboardPage() {
                 <Chart
                   type="bar"
                   height={chartHeight(data.vehicleTypes.length)}
-                  options={barOptions(data.vehicleTypes.map((v) => v.type), null, null, (v) => `${nf.format(v)}%`, {
-                    xaxis: { ...base.xaxis, categories: data.vehicleTypes.map((v) => v.type), labels: { show: false }, max: 100 },
+                  options={barOptions(data.vehicleTypes.map((v) => v.type || "-"), null, null, (v) => `${nf.format(v)}%`, {
+                    xaxis: { ...base.xaxis, categories: data.vehicleTypes.map((v) => v.type || "-"), labels: { show: false }, max: 100 },
                     tooltip: { theme: theme.mode, y: { formatter: (v: number, opts?: { dataPointIndex: number }) => `${nf.format(v)}% dari ${data.vehicleTypes[opts?.dataPointIndex ?? 0]?.plans ?? 0} plan` } },
                   })}
                   series={[{ name: "Utilisasi", data: data.vehicleTypes.map((v) => Math.round((v.avgUtilization ?? 0) * 10) / 10) }]}
