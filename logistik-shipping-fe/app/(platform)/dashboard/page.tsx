@@ -18,6 +18,7 @@ import { INCIDENT_TYPE_LABEL, type IncidentType } from "@/lib/api/shipping-incid
 import { formatPlanDate, formatRupiah, type ShippingPlanStatus } from "@/lib/api/shipping-plan";
 import { getCurrentLang, localeTag } from "@/lib/i18n/locale";
 import { useI18n } from "@/lib/i18n/provider";
+import { translate } from "@/lib/i18n/translate";
 import { cn } from "@/lib/utils";
 
 const RANGES: { value: DashboardRange; label: string }[] = [
@@ -126,14 +127,14 @@ export default function DashboardPage() {
       setUpdatedAt(new Date());
       setError(null);
     } catch (e) {
-      const message = e instanceof Error ? e.message : t("Gagal mengambil data dashboard.");
+      const message = e instanceof Error ? e.message : "Gagal mengambil data dashboard.";
       if (silent) console.error(message);
-      else toast.error(message);
+      else toast.error(translate(getCurrentLang(), message));
       setError((current) => current ?? message);
     } finally {
       setIsRefreshing(false);
     }
-  }, [t]);
+  }, []);
 
   useEffect(() => {
     const first = window.setTimeout(() => void load(range), 0);
@@ -265,7 +266,7 @@ export default function DashboardPage() {
 
       {error && !data && (
         <div className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive">
-          {error}{" "}
+          {t(error)}{" "}
           <button className="underline" onClick={() => void load(range)}>
             {t("Coba lagi")}
           </button>
@@ -287,7 +288,7 @@ export default function DashboardPage() {
             <Tile label="Dalam perjalanan" value={fmt(data.kpis.inTransit.value ?? 0)} hint="saat ini" />
             <Tile label="Biaya angkut" value={compactRupiah(data.kpis.freightCost.value ?? 0)} change={data.kpis.freightCost.change} hint="vs sebelumnya" />
             <Tile label="Utilisasi muatan" value={data.kpis.avgUtilization.value === null ? "-" : `${fmt(data.kpis.avgUtilization.value)}%`} change={data.kpis.avgUtilization.change} changeLabel=" poin" goodWhenUp hint="rata-rata" />
-            <Tile label="Bebas insiden" value={data.kpis.incidentFree.value === null ? "-" : `${fmt(data.kpis.incidentFree.value)}%`} hint={`dari ${data.kpis.incidentFree.shipped} pengiriman`} />
+            <Tile label="Bebas insiden" value={data.kpis.incidentFree.value === null ? "-" : `${fmt(data.kpis.incidentFree.value)}%`} hint={t("dari {n} pengiriman", { n: data.kpis.incidentFree.shipped })} />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-3">

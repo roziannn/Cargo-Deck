@@ -15,6 +15,8 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getStoredAuthToken, getStoredAuthUser } from "@/lib/api/auth";
 import { createMstCubstool, listMstCubstools, type MstCubstoolItem, updateMstCubstool } from "@/lib/api/mst-cubstool";
+import { useI18n } from "@/lib/i18n/provider";
+import { localeTag } from "@/lib/i18n/locale";
 
 function formatDimensions(row: Pick<MstCubstoolItem, "length" | "width" | "height">) {
   return [row.length, row.width, row.height].map((value) => value.trim() || "-").join(" x ");
@@ -26,7 +28,7 @@ function formatCreatedDate(value: string) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
 
-  return new Intl.DateTimeFormat("id-ID", {
+  return new Intl.DateTimeFormat(localeTag(), {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(parsed);
@@ -95,7 +97,7 @@ function parseImportRows(file: File) {
         const missingHeaders = requiredHeaders.filter((header) => !headerMap.has(header));
 
         if (missingHeaders.length > 0) {
-          reject(new Error(`Header Excel tidak lengkap. Header wajib: Name, Item Code, Length, Width, Height, Weight, Color.`));
+          reject(new Error("Header Excel tidak lengkap. Header wajib: Name, Item Code, Length, Width, Height, Weight, Color."));
           return;
         }
 
@@ -132,6 +134,7 @@ function parseImportRows(file: File) {
 }
 
 export default function CubstoolPage() {
+  const { t } = useI18n();
   const [data, setData] = useState<MstCubstoolItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -168,7 +171,7 @@ export default function CubstoolPage() {
       const rows = await listMstCubstools(token);
       setData(rows);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Gagal mengambil data cubstool.";
+      const message = error instanceof Error ? error.message : ;
       toast.error(message);
       setData([]);
     } finally {
@@ -244,17 +247,17 @@ export default function CubstoolPage() {
     const normalizedColor = normalizeHexColor(colorPickerValue);
 
     if (!normalizedName || !normalizedItemCode) {
-      toast.error("Name dan Item Code wajib diisi.");
+      toast.error(t("Name dan Item Code wajib diisi."));
       return;
     }
 
     if (!HEX_COLOR_REGEX.test(normalizedColor)) {
-      toast.error("Color wajib diisi dengan format warna yang valid.");
+      toast.error(t("Color wajib diisi dengan format warna yang valid."));
       return;
     }
 
     if (mode === "edit" && !editingNewId) {
-      toast.error("NewId cubstool tidak ditemukan.");
+      toast.error(t("NewId cubstool tidak ditemukan."));
       return;
     }
 
@@ -263,7 +266,7 @@ export default function CubstoolPage() {
     const actor = (currentUser?.name || currentUser?.username || currentUser?.email || "").trim();
 
     if (!actor) {
-      toast.error("User login tidak ditemukan.");
+      toast.error(t("User login tidak ditemukan."));
       return;
     }
 
@@ -291,9 +294,9 @@ export default function CubstoolPage() {
       setPage(1);
       setOpenForm(false);
       resetForm();
-      toast.success(mode === "create" ? `Cubstool "${normalizedName}" berhasil ditambahkan.` : `Cubstool "${normalizedName}" berhasil diperbarui.`);
+      toast.success(mode === "create" ? t('Cubstool "{name}" berhasil ditambahkan.', { name: normalizedName }) : t('Cubstool "{name}" berhasil diperbarui.', { name: normalizedName }));
     } catch (error) {
-      const message = error instanceof Error ? error.message : mode === "create" ? "Gagal menyimpan cubstool." : "Gagal memperbarui cubstool.";
+      const message = error instanceof Error ? error.message : mode === "create" ? t("Gagal menyimpan cubstool.") : t("Gagal memperbarui cubstool.");
       toast.error(message);
     } finally {
       setIsSaving(false);
@@ -309,13 +312,13 @@ export default function CubstoolPage() {
 
     const fileName = file.name.toLowerCase();
     if (!(fileName.endsWith(".xls") || fileName.endsWith(".xlsx"))) {
-      setImportError("Hanya file .xls / .xlsx yang diperbolehkan.");
+      setImportError(t("Hanya file .xls / .xlsx yang diperbolehkan."));
       setImportFile(null);
       return;
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      setImportError("Ukuran file maksimal 5MB.");
+      setImportError(t("Ukuran file maksimal 5MB."));
       setImportFile(null);
       return;
     }
@@ -332,7 +335,7 @@ export default function CubstoolPage() {
 
   async function handleImport() {
     if (!importFile) {
-      setImportError("Pilih file terlebih dahulu.");
+      setImportError(t("Pilih file terlebih dahulu."));
       return;
     }
 
@@ -341,7 +344,7 @@ export default function CubstoolPage() {
     const actor = (currentUser?.name || currentUser?.username || currentUser?.email || "").trim();
 
     if (!actor) {
-      setImportError("User login tidak ditemukan.");
+      setImportError(t("User login tidak ditemukan."));
       return;
     }
 
@@ -358,12 +361,12 @@ export default function CubstoolPage() {
         const normalizedColor = normalizeHexColor(row.color);
 
         if (!normalizedName || !normalizedItemCode) {
-          errors.push(`Baris ${index + 2}: Name dan Item Code wajib diisi.`);
+          errors.push(t("Baris {row}: Name dan Item Code wajib diisi.", { row: index + 2 }));
           continue;
         }
 
         if (!HEX_COLOR_REGEX.test(normalizedColor)) {
-          errors.push(`Baris ${index + 2}: Color harus berupa hex valid, misalnya #1B1B1B.`);
+          errors.push(t("Baris {row}: Color harus berupa hex valid, misalnya #1B1B1B.", { row: index + 2 }));
           continue;
         }
 
@@ -384,8 +387,8 @@ export default function CubstoolPage() {
           );
           successCount += 1;
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Gagal import data.";
-          errors.push(`Baris ${index + 2}: ${message}`);
+          const message = error instanceof Error ? error.message : t("Gagal import data.");
+          errors.push(t("Baris {row}: {message}", { row: index + 2, message }));
         }
       }
 
@@ -396,19 +399,19 @@ export default function CubstoolPage() {
         setOpenImport(false);
         setImportFile(null);
         setImportError(null);
-        toast.success(`${successCount} data cubstool berhasil diimport.`);
+        toast.success(t("{count} data cubstool berhasil diimport.", { count: successCount }));
         return;
       }
 
       if (successCount > 0 && errors.length > 0) {
-        toast.success(`${successCount} data berhasil diimport. ${errors.length} data gagal.`);
+        toast.success(t("{count} data berhasil diimport. {failed} data gagal.", { count: successCount, failed: errors.length }));
         setImportError(errors.slice(0, 5).join("\n"));
         return;
       }
 
-      setImportError(errors.slice(0, 5).join("\n") || "Tidak ada data yang berhasil diimport.");
+      setImportError(errors.slice(0, 5).join("\n") || t("Tidak ada data yang berhasil diimport."));
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Gagal mengunggah file.";
+      const message = error instanceof Error ? t(error.message) : t("Gagal mengunggah file.");
       setImportError(message);
     } finally {
       setIsImporting(false);
@@ -435,8 +438,8 @@ export default function CubstoolPage() {
       <Toaster position="top-center" />
 
       <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Master Cubstool</h1>
-        <p className="text-sm text-muted-foreground">Manage cubstool master data.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("Master Cubstool")}</h1>
+        <p className="text-sm text-muted-foreground">{t("Manage cubstool master data.")}</p>
       </div>
 
       <div className="flex items-center justify-between">
@@ -448,17 +451,17 @@ export default function CubstoolPage() {
               setSearch(e.target.value);
               setPage(1);
             }}
-            placeholder="Search name, item code, or creator..."
+            placeholder={t("Search name, item code, or creator...")}
             className="w-full rounded-md px-9 py-2 text-sm"
           />
         </div>
 
         <div className="flex items-center gap-2">
           <Button onClick={() => setOpenImport(true)} variant="outline" className="font-medium">
-            <Upload className="mr-2 h-4 w-4" /> Import
+            <Upload className="mr-2 h-4 w-4" /> {t("Import")}
           </Button>
           <Button onClick={openCreate} className="font-medium">
-            + Add Cubstool
+            {t("+ Add Cubstool")}
           </Button>
         </div>
       </div>
@@ -467,15 +470,15 @@ export default function CubstoolPage() {
         <Table containerClassName="rounded-none border-0 bg-transparent">
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Item Code</TableHead>
-              <TableHead>Dimensions (L x W x H)</TableHead>
-              <TableHead>Weight</TableHead>
-              <TableHead>Color</TableHead>
-              <TableHead>Is Active</TableHead>
-              <TableHead>Created By</TableHead>
-              <TableHead>Created Date</TableHead>
-              <TableHead className="w-24 text-center">Actions</TableHead>
+              <TableHead>{t("Name")}</TableHead>
+              <TableHead>{t("Item Code")}</TableHead>
+              <TableHead>{t("Dimensions (L x W x H)")}</TableHead>
+              <TableHead>{t("Weight")}</TableHead>
+              <TableHead>{t("Color")}</TableHead>
+              <TableHead>{t("Is Active")}</TableHead>
+              <TableHead>{t("Created By")}</TableHead>
+              <TableHead>{t("Created Date")}</TableHead>
+              <TableHead className="w-24 text-center">{t("Actions")}</TableHead>
             </TableRow>
           </TableHeader>
 
@@ -489,9 +492,9 @@ export default function CubstoolPage() {
                 <TableCell>{row.color || "-"}</TableCell>
                 <TableCell>
                   {row.isActive ? (
-                    <Badge className="border border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Active</Badge>
+                    <Badge className="border border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">{t("Active")}</Badge>
                   ) : (
-                    <Badge variant="secondary">Inactive</Badge>
+                    <Badge variant="secondary">{t("Inactive")}</Badge>
                   )}
                 </TableCell>
                 <TableCell>{row.createdBy || "-"}</TableCell>
@@ -524,7 +527,11 @@ export default function CubstoolPage() {
 
         <div className="flex flex-col gap-2 border-t px-3 py-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>
-            Showing {Math.min(startIndex + 1, filtered.length || 0)} to {Math.min(startIndex + rowsPerPage, filtered.length)} of {filtered.length} entries
+            {t("Showing {from} to {to} of {total} entries", {
+              from: Math.min(startIndex + 1, filtered.length || 0),
+              to: Math.min(startIndex + rowsPerPage, filtered.length),
+              total: filtered.length,
+            })}
           </span>
 
           <div className="flex items-center gap-2">
@@ -533,7 +540,7 @@ export default function CubstoolPage() {
             </Button>
 
             <span className="min-w-24 text-center">
-              Page {page} of {totalPages}
+              {t("Page {page} of {total}", { page, total: totalPages })}
             </span>
 
             <Button variant="outline" size="icon" className="h-8 w-8" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>
@@ -546,44 +553,44 @@ export default function CubstoolPage() {
       <Dialog open={openForm} onOpenChange={setOpenForm}>
         <DialogContent className="w-[calc(100vw-2rem)] max-w-md">
           <DialogHeader>
-            <DialogTitle>{mode === "create" ? "Add Cubstool" : "Edit Cubstool"}</DialogTitle>
+            <DialogTitle>{mode === "create" ? t("Add Cubstool") : t("Edit Cubstool")}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-1">
-              <Label>Name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Input name" />
+              <Label>{t("Name")}</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Input name")} />
             </div>
 
             <div className="space-y-1">
-              <Label>Item Code</Label>
-              <Input value={itemCode} onChange={(e) => setItemCode(e.target.value)} placeholder="Input item code" />
+              <Label>{t("Item Code")}</Label>
+              <Input value={itemCode} onChange={(e) => setItemCode(e.target.value)} placeholder={t("Input item code")} />
             </div>
 
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-1">
-                <Label>Length</Label>
-                <Input value={length} onChange={(e) => setLength(e.target.value)} placeholder="e.g. 10" />
+                <Label>{t("Length")}</Label>
+                <Input value={length} onChange={(e) => setLength(e.target.value)} placeholder={t("e.g. 10")} />
               </div>
 
               <div className="space-y-1">
-                <Label>Width</Label>
-                <Input value={width} onChange={(e) => setWidth(e.target.value)} placeholder="e.g. 5" />
+                <Label>{t("Width")}</Label>
+                <Input value={width} onChange={(e) => setWidth(e.target.value)} placeholder={t("e.g. 5")} />
               </div>
 
               <div className="space-y-1">
-                <Label>Height</Label>
-                <Input value={height} onChange={(e) => setHeight(e.target.value)} placeholder="e.g. 3" />
+                <Label>{t("Height")}</Label>
+                <Input value={height} onChange={(e) => setHeight(e.target.value)} placeholder={t("e.g. 3")} />
               </div>
             </div>
 
             <div className="space-y-1">
-              <Label>Weight</Label>
-              <Input value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="e.g. 2 kg" />
+              <Label>{t("Weight")}</Label>
+              <Input value={weight} onChange={(e) => setWeight(e.target.value)} placeholder={t("e.g. 2 kg")} />
             </div>
 
             <div className="space-y-1">
-              <Label>Color</Label>
+              <Label>{t("Color")}</Label>
               <div className="space-y-2">
                 <Input
                   type="color"
@@ -601,8 +608,8 @@ export default function CubstoolPage() {
             {mode === "edit" && (
               <div className="flex items-center justify-between rounded-md border p-3">
                 <div className="space-y-0.5">
-                  <Label>Is Active</Label>
-                  <p className="text-xs text-muted-foreground">Aktifkan atau nonaktifkan data cubstool.</p>
+                  <Label>{t("Is Active")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("Aktifkan atau nonaktifkan data cubstool.")}</p>
                 </div>
                 <Switch checked={isActive} onCheckedChange={setIsActive} />
               </div>
@@ -611,10 +618,10 @@ export default function CubstoolPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenForm(false)} disabled={isSaving}>
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button onClick={() => void handleSave()} disabled={isSaving}>
-              {isSaving ? "Saving..." : mode === "create" ? "Add" : "Save"}
+              {isSaving ? t("Saving...") : mode === "create" ? t("Add") : t("Save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -632,8 +639,8 @@ export default function CubstoolPage() {
       >
         <DialogContent className="w-[calc(100vw-2rem)] max-w-md">
           <DialogHeader>
-            <DialogTitle>Import from Excel</DialogTitle>
-            Upload an Excel file (.xlsx, .xls) to bulk import cubstools.
+            <DialogTitle>{t("Import from Excel")}</DialogTitle>
+            {t("Upload an Excel file (.xlsx, .xls) to bulk import cubstools.")}
           </DialogHeader>
 
           <div className="space-y-4">
@@ -641,10 +648,10 @@ export default function CubstoolPage() {
               <Info className="h-4 w-4 text-blue-700" />
               <AlertDescription>
                 <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="text-sm leading-relaxed text-blue-700">Make sure to use the correct format.</div>
+                  <div className="text-sm leading-relaxed text-blue-700">{t("Make sure to use the correct format.")}</div>
                   <button type="button" onClick={handleDownloadTemplate} className="inline-flex w-fit shrink-0 items-center gap-1 text-sm text-blue-700">
                     <Download className="h-3 w-3" />
-                    <span className="font-medium">Download Template</span>
+                    <span className="font-medium">{t("Download Template")}</span>
                   </button>
                 </div>
               </AlertDescription>
@@ -655,8 +662,8 @@ export default function CubstoolPage() {
                 <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full border border-blue-200 bg-blue-100">
                   <Upload className="h-7 w-7 text-blue-600" />
                 </div>
-                <div className="text-sm">Click to upload or drag and drop</div>
-                <div className="text-xs text-muted-foreground">Excel files only (max 5MB)</div>
+                <div className="text-sm">{t("Click to upload or drag and drop")}</div>
+                <div className="text-xs text-muted-foreground">{t("Excel files only (max 5MB)")}</div>
                 <input
                   type="file"
                   accept=".xls,.xlsx"
@@ -665,21 +672,21 @@ export default function CubstoolPage() {
                   id="cubstool-import-file"
                 />
                 <label htmlFor="cubstool-import-file" className="mt-3 inline-block cursor-pointer text-sm underline">
-                  Choose file
+                  {t("Choose file")}
                 </label>
               </div>
             </div>
 
-            {importFile && <div className="text-sm">Selected: {importFile.name}</div>}
+            {importFile && <div className="text-sm">{t("Selected: {name}", { name: importFile.name })}</div>}
             {importError && <div className="text-sm text-destructive">{importError}</div>}
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenImport(false)} disabled={isImporting}>
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button onClick={() => void handleImport()} disabled={isImporting}>
-              {isImporting ? "Importing..." : "Import"}
+              {isImporting ? t("Importing...") : t("Import")}
             </Button>
           </DialogFooter>
         </DialogContent>

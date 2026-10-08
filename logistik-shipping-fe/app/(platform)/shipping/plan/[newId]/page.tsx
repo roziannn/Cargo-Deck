@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getStoredAuthToken } from "@/lib/api/auth";
+import { useI18n } from "@/lib/i18n/provider";
 import { INCIDENT_TYPE_LABEL, isIncidentOpen } from "@/lib/api/shipping-incident";
 import {
   changeShippingPlanStatus,
@@ -55,10 +56,26 @@ function addDays(date: string, days: number) {
   return d.toISOString().slice(0, 10);
 }
 
+/** History notes written by the server: fixed ones are looked up as they are, the ones with values are matched and rebuilt. */
+function translateNote(note: string, t: (text: string, params?: Record<string, string | number>) => string) {
+  let m = note.match(/^Load simulation saved \((\d+) item types\)$/);
+  if (m) return t("Load simulation saved ({count} item types)", { count: m[1] });
+  m = note.match(/^Surat jalan (.+) diterbitkan, ETA (\S+) \(\+(\d+) hari\)$/);
+  if (m) return t("Surat jalan {no} diterbitkan, ETA {eta} (+{days} hari)", { no: m[1], eta: m[2], days: m[3] });
+  m = note.match(/^ETA diubah ke (\S+) \(\+(\d+) hari\)$/);
+  if (m) return t("ETA diubah ke {eta} (+{days} hari)", { eta: m[1], days: m[2] });
+  m = note.match(/^Diterima oleh ([^:]+): (.+)$/s);
+  if (m) return t("Diterima oleh {name}: {notes}", { name: m[1], notes: m[2] });
+  m = note.match(/^Diterima oleh (.+)$/s);
+  if (m) return t("Diterima oleh {name}", { name: m[1] });
+  return t(note);
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  const { t } = useI18n();
   return (
     <div className="space-y-1">
-      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t(label)}</div>
       <div className="text-sm">{children}</div>
     </div>
   );
@@ -75,20 +92,21 @@ function EtaFields({
   onEtaDate: (value: string) => void;
   onGraceDays: (value: string) => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="space-y-3 rounded-md border p-3">
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label>Estimasi tiba (ETA)</Label>
+          <Label>{t("Estimasi tiba (ETA)")}</Label>
           <Input type="date" value={etaDate} onChange={(e) => onEtaDate(e.target.value)} />
         </div>
         <div className="space-y-1.5">
-          <Label>Masa tunggu (hari)</Label>
+          <Label>{t("Masa tunggu (hari)")}</Label>
           <Input value={graceDays} onChange={(e) => onGraceDays(e.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" />
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        Kalau sampai ETA + masa tunggu tidak ada insiden, plan selesai otomatis. Bisa juga ditandai diterima lebih awal.
+        {t("Kalau sampai ETA + masa tunggu tidak ada insiden, plan selesai otomatis. Bisa juga ditandai diterima lebih awal.")}
       </p>
     </div>
   );
@@ -97,6 +115,7 @@ function EtaFields({
 export default function ShippingPlanDetailPage() {
   const { newId } = useParams<{ newId: string }>();
   const router = useRouter();
+  const { t } = useI18n();
   const [plan, setPlan] = useState<ShippingPlanDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
@@ -119,9 +138,9 @@ export default function ShippingPlanDetailPage() {
       setPlan(await getShippingPlan(newId, getStoredAuthToken() ?? undefined));
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Gagal mengambil shipping plan.");
+      setError(e instanceof Error ? e.message : t("Gagal mengambil shipping plan."));
     }
-  }, [newId]);
+  }, [newId, t]);
 
   useEffect(() => {
     const id = window.setTimeout(() => void load(), 0);
@@ -145,10 +164,10 @@ export default function ShippingPlanDetailPage() {
     setIsBusy(true);
     try {
       setPlan(await startShippingPlanPicking(newId, getStoredAuthToken() ?? undefined));
-      toast.success("Picking & packing dimulai.");
+      toast.success(t("Picking & packing dimulai."));
       setOpenPicking(true);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal memulai picking.");
+      toast.error(e instanceof Error ? e.message : t("Gagal memulai picking."));
       await load();
     } finally {
       setIsBusy(false);
@@ -158,8 +177,8 @@ export default function ShippingPlanDetailPage() {
   /** ETA and grace days from the form, or null (with a toast) when they are not valid. */
   function readEta() {
     const grace = Number(graceDays);
-    if (!etaDate) return void toast.error("Isi estimasi tiba.");
-    if (!Number.isInteger(grace) || grace < 0 || grace > 30) return void toast.error("Masa tunggu harus 0 sampai 30 hari.");
+    if (!etaDate) return void toast.error(t("Isi estimasi tiba."));
+    if (!Number.isInteger(grace) || grace < 0 || grace > 30) return void toast.error(t("Masa tunggu harus 0 sampai 30 hari."));
     return { etaDate, graceDays: grace };
   }
 
@@ -177,9 +196,9 @@ export default function ShippingPlanDetailPage() {
     try {
       setPlan(await updateShippingPlanEta(newId, eta, getStoredAuthToken() ?? undefined));
       setOpenEta(false);
-      toast.success("ETA diperbarui.");
+      toast.success(t("ETA diperbarui."));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal mengubah ETA.");
+      toast.error(e instanceof Error ? e.message : t("Gagal mengubah ETA."));
       await load();
     } finally {
       setIsBusy(false);
@@ -187,14 +206,14 @@ export default function ShippingPlanDetailPage() {
   }
 
   async function runReceive() {
-    if (!receivedBy.trim()) return void toast.error("Isi nama penerima.");
+    if (!receivedBy.trim()) return void toast.error(t("Isi nama penerima."));
     setIsBusy(true);
     try {
       setPlan(await receiveShippingPlan(newId, { receivedBy: receivedBy.trim(), notes: receiveNotes.trim() || undefined }, getStoredAuthToken() ?? undefined));
       setOpenReceive(false);
-      toast.success("Pengiriman ditandai diterima.");
+      toast.success(t("Pengiriman ditandai diterima."));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menandai diterima.");
+      toast.error(e instanceof Error ? e.message : t("Gagal menandai diterima."));
       await load();
     } finally {
       setIsBusy(false);
@@ -209,10 +228,10 @@ export default function ShippingPlanDetailPage() {
       const dispatched = await dispatchShippingPlan(newId, eta, getStoredAuthToken() ?? undefined);
       setPlan(dispatched);
       setOpenDispatch(false);
-      toast.success(`Surat jalan ${dispatched.deliveryNoteNo} diterbitkan.`);
+      toast.success(t("Surat jalan {no} diterbitkan.", { no: dispatched.deliveryNoteNo ?? "" }));
       router.push(`/surat-jalan/${newId}`); // same tab: the login token may live in this tab's sessionStorage
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menerbitkan surat jalan.");
+      toast.error(e instanceof Error ? e.message : t("Gagal menerbitkan surat jalan."));
       await load();
     } finally {
       setIsBusy(false);
@@ -223,11 +242,11 @@ export default function ShippingPlanDetailPage() {
     setIsBusy(true);
     try {
       setPlan(await changeShippingPlanStatus(newId, action, note, getStoredAuthToken() ?? undefined));
-      toast.success(action === "approve" ? "Plan approved." : "Plan cancelled.");
+      toast.success(action === "approve" ? t("Plan approved.") : t("Plan cancelled."));
       setOpenCancel(false);
       setReason("");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Aksi gagal.");
+      toast.error(e instanceof Error ? e.message : t("Aksi gagal."));
       await load();
     } finally {
       setIsBusy(false);
@@ -235,7 +254,7 @@ export default function ShippingPlanDetailPage() {
   }
 
   if (error) return <div className="p-6 text-sm text-destructive">{error}</div>;
-  if (!plan) return <div className="p-6 text-sm text-muted-foreground">Loading...</div>;
+  if (!plan) return <div className="p-6 text-sm text-muted-foreground">{t("Loading...")}</div>;
 
   const editable = plan.status === "DRAFT" || plan.status === "PLANNED";
   const weight = Number(plan.totalWeightKg);
@@ -251,7 +270,7 @@ export default function ShippingPlanDetailPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-2">
           <Link href="/shipping/plan" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
-            <ChevronLeft className="mr-1 h-4 w-4" /> Back to plans
+            <ChevronLeft className="mr-1 h-4 w-4" /> {t("Back to plans")}
           </Link>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-semibold tracking-tight">{plan.planNo}</h1>
@@ -267,27 +286,27 @@ export default function ShippingPlanDetailPage() {
           {editable && (
             <>
               <Button variant="outline" asChild>
-                <Link href={`/shipping/plan/${plan.newId}/edit`}>Edit Details</Link>
+                <Link href={`/shipping/plan/${plan.newId}/edit`}>{t("Edit Details")}</Link>
               </Button>
               <Button variant="outline" asChild>
-                <Link href={`/shipping/container-load/create?planId=${plan.newId}`}>{plan.status === "DRAFT" ? "Start Load Simulation" : "Open Load Simulation"}</Link>
+                <Link href={`/shipping/container-load/create?planId=${plan.newId}`}>{plan.status === "DRAFT" ? t("Start Load Simulation") : t("Open Load Simulation")}</Link>
               </Button>
             </>
           )}
           {plan.status === "PLANNED" && (
             <Button onClick={() => void runAction("approve")} disabled={isBusy}>
-              <Check className="mr-2 h-4 w-4" /> Approve
+              <Check className="mr-2 h-4 w-4" /> {t("Approve")}
             </Button>
           )}
           {plan.status === "APPROVED" && (
             <Button onClick={() => setOpenBooking(true)} disabled={isBusy}>
-              <Truck className="mr-2 h-4 w-4" /> Booking Armada
+              <Truck className="mr-2 h-4 w-4" /> {t("Booking Armada")}
             </Button>
           )}
           {plan.status === "BOOKED" && (
             <>
               <Button variant="outline" onClick={() => setOpenBooking(true)} disabled={isBusy}>
-                Ubah Booking
+                {t("Ubah Booking")}
               </Button>
               <Button variant="outline" asChild>
                 <Link href={`/surat-jalan/${plan.newId}`}>
@@ -295,57 +314,57 @@ export default function ShippingPlanDetailPage() {
                 </Link>
               </Button>
               <Button onClick={() => void runStartPicking()} disabled={isBusy}>
-                <PackageCheck className="mr-2 h-4 w-4" /> Mulai Picking &amp; Packing
+                <PackageCheck className="mr-2 h-4 w-4" /> {t("Mulai Picking & Packing")}
               </Button>
             </>
           )}
           {plan.status === "PICKING" && (
             <Button onClick={() => setOpenPicking(true)} disabled={isBusy}>
-              <PackageCheck className="mr-2 h-4 w-4" /> Input Hasil Picking
+              <PackageCheck className="mr-2 h-4 w-4" /> {t("Input Hasil Picking")}
             </Button>
           )}
           {plan.status === "LOADING" && (
             <>
               <Button variant={plan.readiness.complete ? "outline" : "default"} onClick={() => setOpenLoading(true)} disabled={isBusy}>
-                <Truck className="mr-2 h-4 w-4" /> Input Data Loading
+                <Truck className="mr-2 h-4 w-4" /> {t("Input Data Loading")}
               </Button>
               <Button variant="outline" asChild>
                 <Link href={`/surat-jalan/${plan.newId}`}>
                   <FileText className="mr-2 h-4 w-4" /> Preview Surat Jalan
                 </Link>
               </Button>
-              <Button onClick={() => openEtaForm(true)} disabled={isBusy || !plan.readiness.complete} title={plan.readiness.complete ? undefined : "Lengkapi data loading dulu"}>
-                Terbitkan Surat Jalan &amp; Berangkatkan
+              <Button onClick={() => openEtaForm(true)} disabled={isBusy || !plan.readiness.complete} title={plan.readiness.complete ? undefined : t("Lengkapi data loading dulu")}>
+                {t("Terbitkan Surat Jalan & Berangkatkan")}
               </Button>
             </>
           )}
           {(plan.status === "DISPATCHED" || plan.status === "COMPLETED") && (
             <Button variant={plan.status === "DISPATCHED" ? "outline" : "default"} asChild>
               <Link href={`/surat-jalan/${plan.newId}`}>
-                <FileText className="mr-2 h-4 w-4" /> Cetak Surat Jalan {plan.deliveryNoteNo}
+                <FileText className="mr-2 h-4 w-4" /> {t("Cetak Surat Jalan {no}", { no: plan.deliveryNoteNo ?? "" })}
               </Link>
             </Button>
           )}
           {plan.status === "DISPATCHED" && (
             <>
               <Button variant="outline" onClick={() => openEtaForm(false)} disabled={isBusy}>
-                Ubah ETA
+                {t("Ubah ETA")}
               </Button>
               <Button onClick={() => setOpenReceive(true)} disabled={isBusy}>
-                <CircleCheck className="mr-2 h-4 w-4" /> Tandai Diterima
+                <CircleCheck className="mr-2 h-4 w-4" /> {t("Tandai Diterima")}
               </Button>
             </>
           )}
           {plan.canReportIncident && (
             <Button variant="outline" asChild>
               <Link href={`/shipping/incident/create?planId=${plan.newId}`}>
-                <AlertTriangle className="mr-2 h-4 w-4" /> Lapor Insiden
+                <AlertTriangle className="mr-2 h-4 w-4" /> {t("Lapor Insiden")}
               </Link>
             </Button>
           )}
           {plan.status !== "CANCELLED" && plan.status !== "DISPATCHED" && plan.status !== "COMPLETED" && (
             <Button variant="outline" className="text-destructive" onClick={() => setOpenCancel(true)} disabled={isBusy}>
-              Cancel Plan
+              {t("Cancel Plan")}
             </Button>
           )}
         </div>
@@ -361,7 +380,7 @@ export default function ShippingPlanDetailPage() {
                   index <= stepIndex ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-dashed text-muted-foreground",
                 )}
               >
-                {step.label}
+                {t(step.label)}
               </span>
               {index < STEPS.length - 1 && <Arrow className="mx-0" />}
             </li>
@@ -372,7 +391,7 @@ export default function ShippingPlanDetailPage() {
       <div className="grid gap-6 rounded-lg border p-5 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Planned ship date">{formatPlanDate(plan.plannedShipDate)}</Field>
         <Field label="Requested delivery">{formatPlanDate(plan.requestedDeliveryDate)}</Field>
-        <Field label="Special handling">{plan.specialHandling ? HANDLING_LABEL[plan.specialHandling] : "-"}</Field>
+        <Field label="Special handling">{plan.specialHandling ? t(HANDLING_LABEL[plan.specialHandling]) : "-"}</Field>
         <Field label="Created by">
           {plan.createdBy || "-"} · {formatPlanDateTime(plan.createdDate)}
         </Field>
@@ -382,9 +401,9 @@ export default function ShippingPlanDetailPage() {
       </div>
 
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold">Load</h2>
+        <h2 className="text-lg font-semibold">{t("Load")}</h2>
         {plan.items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No load simulation saved yet. Use “Start Load Simulation” to choose a vehicle and arrange the cargo.</p>
+          <p className="text-sm text-muted-foreground">{t("No load simulation saved yet. Use “Start Load Simulation” to choose a vehicle and arrange the cargo.")}</p>
         ) : (
           <>
             <div className="grid gap-6 rounded-lg border p-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -401,24 +420,24 @@ export default function ShippingPlanDetailPage() {
             {overweight && (
               <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                Total weight exceeds the vehicle&apos;s max payload. Choose a bigger vehicle or reduce the load before approving.
+                {t("Total weight exceeds the vehicle's max payload. Choose a bigger vehicle or reduce the load before approving.")}
               </div>
             )}
             {payload === null && (
-              <p className="text-xs text-muted-foreground">This vehicle has no max payload set, so the weight limit is not checked. Set it in Master Vehicle.</p>
+              <p className="text-xs text-muted-foreground">{t("This vehicle has no max payload set, so the weight limit is not checked. Set it in Master Vehicle.")}</p>
             )}
 
             <div className="overflow-hidden rounded-lg border">
               <Table containerClassName="rounded-none border-0 bg-transparent">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Item Code</TableHead>
-                    <TableHead>Item</TableHead>
-                    <TableHead className="text-right">Unit weight (kg)</TableHead>
-                    <TableHead className="text-right">Qty</TableHead>
-                    {showActuals && <TableHead className="text-right">Di-pick</TableHead>}
-                    {showActuals && <TableHead className="text-right">Dimuat</TableHead>}
-                    <TableHead className="text-right">Weight (kg)</TableHead>
+                    <TableHead>{t("Item Code")}</TableHead>
+                    <TableHead>{t("Item")}</TableHead>
+                    <TableHead className="text-right">{t("Unit weight (kg)")}</TableHead>
+                    <TableHead className="text-right">{t("Qty")}</TableHead>
+                    {showActuals && <TableHead className="text-right">{t("Di-pick")}</TableHead>}
+                    {showActuals && <TableHead className="text-right">{t("Dimuat")}</TableHead>}
+                    <TableHead className="text-right">{t("Weight (kg)")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -446,12 +465,12 @@ export default function ShippingPlanDetailPage() {
 
       {plan.status === "CANCELLED" ? null : plan.totalCost !== null ? (
         <div className="space-y-3">
-          <h2 className="text-lg font-semibold">Booking &amp; Biaya</h2>
+          <h2 className="text-lg font-semibold">{t("Booking & Biaya")}</h2>
           <div className="grid gap-6 rounded-lg border p-5 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="Carrier">{plan.carrierName || "-"}</Field>
             <Field label="Driver">{plan.driverName || "-"}</Field>
             <Field label="Nomor polisi">{plan.plateNo || "-"}</Field>
-            <Field label="Surat jalan">{plan.deliveryNoteNo ? `${plan.deliveryNoteNo} · ${formatPlanDateTime(plan.dispatchedAt)}` : "Belum diterbitkan"}</Field>
+            <Field label="Surat jalan">{plan.deliveryNoteNo ? `${plan.deliveryNoteNo} · ${formatPlanDateTime(plan.dispatchedAt)}` : t("Belum diterbitkan")}</Field>
             <Field label="Jarak">{plan.distanceKm} km</Field>
             <Field label="Ongkos angkut">
               {formatRupiah(plan.freightCost)}
@@ -472,7 +491,7 @@ export default function ShippingPlanDetailPage() {
         </div>
       ) : estimate && plan.items.length > 0 ? (
         <div className="space-y-3">
-          <h2 className="text-lg font-semibold">Estimasi Biaya</h2>
+          <h2 className="text-lg font-semibold">{t("Estimasi Biaya")}</h2>
           {estimate.missing ? (
             <p className="text-sm text-amber-700">{estimate.missing}</p>
           ) : (
@@ -485,13 +504,13 @@ export default function ShippingPlanDetailPage() {
               </Field>
             </div>
           )}
-          <p className="text-xs text-muted-foreground">Belum termasuk biaya muat dan biaya lain. Angka final ditetapkan saat booking armada.</p>
+          <p className="text-xs text-muted-foreground">{t("Belum termasuk biaya muat dan biaya lain. Angka final ditetapkan saat booking armada.")}</p>
         </div>
       ) : null}
 
       {showActuals && (
         <div className="space-y-3">
-          <h2 className="text-lg font-semibold">Picking &amp; Packing</h2>
+          <h2 className="text-lg font-semibold">{t("Picking & Packing")}</h2>
           {(() => {
             const planned = plan.items.reduce((sum, item) => sum + item.qty, 0);
             const picked = plan.items.reduce((sum, item) => sum + (item.pickedQty ?? 0), 0);
@@ -501,12 +520,12 @@ export default function ShippingPlanDetailPage() {
                 <Field label="Status">
                   <span className="inline-flex items-center gap-1.5">
                     {done ? <CircleCheck className="h-4 w-4 text-emerald-600" /> : <CircleDashed className="h-4 w-4 text-orange-500" />}
-                    {done ? "Selesai" : "Sedang berlangsung"}
+                    {done ? t("Selesai") : t("Sedang berlangsung")}
                   </span>
                 </Field>
                 <Field label="Karton di-pick">
                   <span className={cn(done && picked < planned && "font-medium text-amber-700")}>
-                    {done || picked > 0 ? `${picked} dari ${planned}` : `Belum diisi (rencana ${planned})`}
+                    {done || picked > 0 ? t("{picked} dari {planned}", { picked, planned }) : t("Belum diisi (rencana {planned})", { planned })}
                   </span>
                 </Field>
                 <div className="sm:col-span-2">
@@ -520,10 +539,10 @@ export default function ShippingPlanDetailPage() {
 
       {(plan.status === "LOADING" || plan.status === "DISPATCHED" || plan.status === "COMPLETED") && (
         <div className="space-y-3">
-          <h2 className="text-lg font-semibold">Loading</h2>
+          <h2 className="text-lg font-semibold">{t("Loading")}</h2>
           <div className="grid gap-6 rounded-lg border p-5 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-1.5 sm:col-span-2">
-              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Checklist</div>
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("Checklist")}</div>
               {[
                 [plan.chkVehiclePapers, "KIR dan STNK"],
                 [plan.chkVehicleClean, "Bak bersih"],
@@ -533,7 +552,7 @@ export default function ShippingPlanDetailPage() {
               ].map(([ok, label]) => (
                 <div key={String(label)} className="flex items-center gap-2 text-sm">
                   {ok ? <CircleCheck className="h-4 w-4 text-emerald-600" /> : <CircleDashed className="h-4 w-4 text-muted-foreground" />}
-                  <span className={ok ? undefined : "text-muted-foreground"}>{String(label)}</span>
+                  <span className={ok ? undefined : "text-muted-foreground"}>{t(String(label))}</span>
                 </div>
               ))}
             </div>
@@ -560,7 +579,7 @@ export default function ShippingPlanDetailPage() {
 
           {plan.status === "LOADING" && plan.readiness.missing.length > 0 && (
             <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-              <div className="font-medium">Belum bisa diberangkatkan:</div>
+              <div className="font-medium">{t("Belum bisa diberangkatkan:")}</div>
               <ul className="list-inside list-disc">
                 {plan.readiness.missing.map((m) => (
                   <li key={m}>{m}</li>
@@ -580,23 +599,23 @@ export default function ShippingPlanDetailPage() {
 
       {(plan.status === "DISPATCHED" || plan.status === "COMPLETED") && (
         <div className="space-y-3">
-          <h2 className="text-lg font-semibold">Pengiriman</h2>
+          <h2 className="text-lg font-semibold">{t("Pengiriman")}</h2>
           <div className="grid gap-6 rounded-lg border p-5 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="Estimasi tiba (ETA)">{formatPlanDate(plan.etaDate)}</Field>
             <Field label="Selesai otomatis setelah">
               {plan.etaDate ? formatPlanDate(addDays(plan.etaDate, plan.graceDays)) : "-"}
-              <div className="text-xs text-muted-foreground">ETA + {plan.graceDays} hari, kalau tidak ada insiden</div>
+              <div className="text-xs text-muted-foreground">{t("ETA + {days} hari, kalau tidak ada insiden", { days: plan.graceDays })}</div>
             </Field>
             {plan.status === "COMPLETED" ? (
               <>
                 <Field label="Selesai">{formatPlanDateTime(plan.deliveredAt)}</Field>
                 <Field label="Diterima oleh">
-                  {plan.receivedBy || "Otomatis (tanpa insiden)"}
+                  {plan.receivedBy || t("Otomatis (tanpa insiden)")}
                   {plan.receiveNotes && <div className="text-xs text-muted-foreground">{plan.receiveNotes}</div>}
                 </Field>
               </>
             ) : (
-              <Field label="Status">Dalam perjalanan</Field>
+              <Field label="Status">{t("Dalam perjalanan")}</Field>
             )}
           </div>
         </div>
@@ -604,9 +623,9 @@ export default function ShippingPlanDetailPage() {
 
       {(plan.incidents.length > 0 || plan.canReportIncident) && (
         <div className="space-y-3">
-          <h2 className="text-lg font-semibold">Insiden &amp; Klaim</h2>
+          <h2 className="text-lg font-semibold">{t("Insiden & Klaim")}</h2>
           {plan.incidents.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Belum ada insiden.</div>
+            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">{t("Belum ada insiden.")}</div>
           ) : (
             <div className="space-y-2">
               {plan.incidents.map((incident) => (
@@ -617,12 +636,12 @@ export default function ShippingPlanDetailPage() {
                 >
                   <div className="space-y-0.5">
                     <div className="font-medium">
-                      {incident.incidentNo} · {INCIDENT_TYPE_LABEL[incident.type]}
+                      {incident.incidentNo} · {t(INCIDENT_TYPE_LABEL[incident.type])}
                     </div>
                     <div className="text-muted-foreground">{incident.description}</div>
                     <div className="text-xs text-muted-foreground">
-                      Estimasi selesai {formatPlanDate(incident.targetDate)}
-                      {incident.claimAmount ? ` · klaim ${formatRupiah(incident.claimAmount)}` : ""}
+                      {t("Estimasi selesai {date}", { date: formatPlanDate(incident.targetDate) })}
+                      {incident.claimAmount ? ` · ${t("klaim {amount}", { amount: formatRupiah(incident.claimAmount) })}` : ""}
                       {incident.solution && !isIncidentOpen(incident.status) ? ` · ${incident.solution}` : ""}
                     </div>
                   </div>
@@ -635,7 +654,7 @@ export default function ShippingPlanDetailPage() {
       )}
 
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold">History</h2>
+        <h2 className="text-lg font-semibold">{t("History")}</h2>
         <ol className="space-y-3 border-l pl-4">
           {[...plan.history].reverse().map((h, index) => (
             <li key={index} className="space-y-0.5">
@@ -650,7 +669,7 @@ export default function ShippingPlanDetailPage() {
                   h.toStatus
                 )}
               </div>
-              {h.note && <div className="text-sm text-muted-foreground">{h.note}</div>}
+              {h.note && <div className="text-sm text-muted-foreground">{translateNote(h.note, t)}</div>}
               <div className="text-xs text-muted-foreground">
                 {h.changedBy || "-"} · {formatPlanDateTime(h.changedDate)}
               </div>
@@ -679,9 +698,9 @@ export default function ShippingPlanDetailPage() {
       <Dialog open={openDispatch} onOpenChange={setOpenDispatch}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Terbitkan surat jalan?</DialogTitle>
+            <DialogTitle>{t("Terbitkan surat jalan?")}</DialogTitle>
             <DialogDescription>
-              Nomor surat jalan akan diterbitkan dan truk dianggap berangkat. Setelah ini booking tidak bisa diubah dan plan tidak bisa dibatalkan.
+              {t("Nomor surat jalan akan diterbitkan dan truk dianggap berangkat. Setelah ini booking tidak bisa diubah dan plan tidak bisa dibatalkan.")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1 rounded-md border bg-muted/30 p-3 text-sm">
@@ -689,19 +708,19 @@ export default function ShippingPlanDetailPage() {
               {plan.carrierName} · {plan.driverName} · {plan.plateNo}
             </div>
             <div className="text-muted-foreground">
-              <RouteText from={plan.originName} to={plan.destinationName} /> · {plan.items.reduce((sum, i) => sum + (i.loadedQty ?? 0), 0)} karton dimuat
+              <RouteText from={plan.originName} to={plan.destinationName} /> · {t("{count} karton dimuat", { count: plan.items.reduce((sum, i) => sum + (i.loadedQty ?? 0), 0) })}
             </div>
             <div className="text-muted-foreground">
-              Segel {plan.sealNo} · berat bersih {plan.readiness.netWeightKg} kg
+              {t("Segel {seal} · berat bersih {weight} kg", { seal: plan.sealNo ?? "", weight: plan.readiness.netWeightKg ?? "" })}
             </div>
           </div>
           <EtaFields etaDate={etaDate} graceDays={graceDays} onEtaDate={setEtaDate} onGraceDays={setGraceDays} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenDispatch(false)} disabled={isBusy}>
-              Kembali
+              {t("Kembali")}
             </Button>
             <Button onClick={() => void runDispatch()} disabled={isBusy}>
-              Terbitkan & Berangkatkan
+              {t("Terbitkan & Berangkatkan")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -710,16 +729,16 @@ export default function ShippingPlanDetailPage() {
       <Dialog open={openEta} onOpenChange={setOpenEta}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Ubah ETA</DialogTitle>
-            <DialogDescription>Kalau ETA mundur karena kendala, ubah di sini supaya plan tidak selesai otomatis terlalu cepat.</DialogDescription>
+            <DialogTitle>{t("Ubah ETA")}</DialogTitle>
+            <DialogDescription>{t("Kalau ETA mundur karena kendala, ubah di sini supaya plan tidak selesai otomatis terlalu cepat.")}</DialogDescription>
           </DialogHeader>
           <EtaFields etaDate={etaDate} graceDays={graceDays} onEtaDate={setEtaDate} onGraceDays={setGraceDays} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenEta(false)} disabled={isBusy}>
-              Batal
+              {t("Batal")}
             </Button>
             <Button onClick={() => void runEta()} disabled={isBusy}>
-              Simpan
+              {t("Simpan")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -728,25 +747,25 @@ export default function ShippingPlanDetailPage() {
       <Dialog open={openReceive} onOpenChange={setOpenReceive}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Tandai diterima</DialogTitle>
-            <DialogDescription>Barang sudah sampai di tujuan. Kalau ada yang rusak atau kurang, tandai dulu lalu laporkan sebagai insiden.</DialogDescription>
+            <DialogTitle>{t("Tandai diterima")}</DialogTitle>
+            <DialogDescription>{t("Barang sudah sampai di tujuan. Kalau ada yang rusak atau kurang, tandai dulu lalu laporkan sebagai insiden.")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label>Diterima oleh</Label>
-              <Input value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} placeholder="Nama penerima" maxLength={100} />
+              <Label>{t("Diterima oleh")}</Label>
+              <Input value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} placeholder={t("Nama penerima")} maxLength={100} />
             </div>
             <div className="space-y-1.5">
-              <Label>Catatan (opsional)</Label>
+              <Label>{t("Catatan (opsional)")}</Label>
               <textarea value={receiveNotes} onChange={(e) => setReceiveNotes(e.target.value)} rows={2} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenReceive(false)} disabled={isBusy}>
-              Batal
+              {t("Batal")}
             </Button>
             <Button onClick={() => void runReceive()} disabled={isBusy}>
-              Tandai Diterima
+              {t("Tandai Diterima")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -755,22 +774,22 @@ export default function ShippingPlanDetailPage() {
       <Dialog open={openCancel} onOpenChange={setOpenCancel}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Cancel {plan.planNo}?</DialogTitle>
-            <DialogDescription>A cancelled plan cannot be reopened. Please give a reason.</DialogDescription>
+            <DialogTitle>{t("Cancel {planNo}?", { planNo: plan.planNo })}</DialogTitle>
+            <DialogDescription>{t("A cancelled plan cannot be reopened. Please give a reason.")}</DialogDescription>
           </DialogHeader>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             rows={3}
-            placeholder="Reason"
+            placeholder={t("Reason")}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenCancel(false)} disabled={isBusy}>
-              Keep Plan
+              {t("Keep Plan")}
             </Button>
             <Button variant="destructive" disabled={isBusy || !reason.trim()} onClick={() => void runAction("cancel", reason.trim())}>
-              Cancel Plan
+              {t("Cancel Plan")}
             </Button>
           </DialogFooter>
         </DialogContent>

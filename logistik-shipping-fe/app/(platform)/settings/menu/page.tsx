@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useI18n } from "@/lib/i18n/provider";
 
 type MenuSetting = {
   id: number;
@@ -42,7 +43,9 @@ function normalizeMenuId(value: string | null | undefined) {
   return (value ?? "").trim().toLowerCase();
 }
 
-function StatusBadge({ label, tone }: { label: string; tone: "success" | "info" | "muted" | "danger" | "progress" }) {
+function StatusBadge({ label: rawLabel, tone }: { label: string; tone: "success" | "info" | "muted" | "danger" | "progress" }) {
+  const { t } = useI18n();
+  const label = t(rawLabel);
   if (tone === "muted") {
     return <Badge variant="secondary">{label}</Badge>;
   }
@@ -127,6 +130,7 @@ function mapMenuFunction(item: CoreMenuFunctionItem): MenuFunction {
 }
 
 export default function SettingsMenuPage() {
+  const { t } = useI18n();
   const [data, setData] = useState<MenuSetting[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -225,13 +229,13 @@ export default function SettingsMenuPage() {
       const rows = await listCoreMenusMaster(token);
       setData(rows.map(mapMenuSetting));
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Gagal mengambil data menu.";
+      const message = error instanceof Error ? error.message : t("Gagal mengambil data menu.");
       toast.error(message);
       setData([]);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadMenus();
@@ -306,12 +310,12 @@ export default function SettingsMenuPage() {
     const normalizedPath = buttonFunctionPath.trim();
 
     if (!selected?.newId) {
-      toast.error("Target menu tidak ditemukan.");
+      toast.error(t("Target menu tidak ditemukan."));
       return;
     }
 
     if (!normalizedName) {
-      toast.error("Button name wajib diisi.");
+      toast.error(t("Button name wajib diisi."));
       return;
     }
 
@@ -320,7 +324,7 @@ export default function SettingsMenuPage() {
     const actor = (currentUser?.name || currentUser?.username || currentUser?.email || "").trim();
 
     if (!actor) {
-      toast.error("User login tidak ditemukan.");
+      toast.error(t("User login tidak ditemukan."));
       return;
     }
 
@@ -338,9 +342,9 @@ export default function SettingsMenuPage() {
       );
 
       handleCloseButtonFunction(false);
-      toast.success(`Button function "${normalizedName}" berhasil disimpan.`);
+      toast.success(t('Button function "{name}" berhasil disimpan.', { name: normalizedName }));
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Gagal menyimpan button function.";
+      const message = error instanceof Error ? error.message : t("Gagal menyimpan button function.");
       toast.error(message);
     } finally {
       setIsSaving(false);
@@ -354,13 +358,13 @@ export default function SettingsMenuPage() {
     const normalizedPath = path.trim();
 
     if (!normalizedName) {
-      toast.error("Menu name wajib diisi.");
+      toast.error(t("Menu name wajib diisi."));
       return;
     }
 
     const parsedSeq = normalizedSeq ? Number(normalizedSeq) : null;
     if (normalizedSeq && (parsedSeq === null || !Number.isInteger(parsedSeq) || parsedSeq < 0)) {
-      toast.error("Seq harus berupa angka bulat 0 atau lebih.");
+      toast.error(t("Seq harus berupa angka bulat 0 atau lebih."));
       return;
     }
 
@@ -369,7 +373,7 @@ export default function SettingsMenuPage() {
     const actor = (currentUser?.name || currentUser?.username || currentUser?.email || "").trim();
 
     if (!actor) {
-      toast.error("User login tidak ditemukan.");
+      toast.error(t("User login tidak ditemukan."));
       return;
     }
 
@@ -411,9 +415,13 @@ export default function SettingsMenuPage() {
       ]);
       setPage(1);
       handleCloseForm(false);
-      toast.success(`${mode === "child" ? "Child menu" : "Menu"} "${normalizedName}" berhasil disimpan.`);
+      toast.success(
+        mode === "child"
+          ? t('Child menu "{name}" berhasil disimpan.', { name: normalizedName })
+          : t('Menu "{name}" berhasil disimpan.', { name: normalizedName }),
+      );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Gagal menyimpan menu.";
+      const message = error instanceof Error ? error.message : t("Gagal menyimpan menu.");
       toast.error(message);
     } finally {
       setIsSaving(false);
@@ -429,18 +437,18 @@ export default function SettingsMenuPage() {
     const normalizedPath = path.trim();
 
     if (!normalizedName) {
-      toast.error("Menu name wajib diisi.");
+      toast.error(t("Menu name wajib diisi."));
       return;
     }
 
     const parsedSeq = normalizedSeq ? Number(normalizedSeq) : null;
     if (normalizedSeq && (parsedSeq === null || !Number.isInteger(parsedSeq) || parsedSeq < 0)) {
-      toast.error("Seq harus berupa angka bulat 0 atau lebih.");
+      toast.error(t("Seq harus berupa angka bulat 0 atau lebih."));
       return;
     }
 
     if (!selected.newId) {
-      toast.error("NewId menu tidak ditemukan.");
+      toast.error(t("NewId menu tidak ditemukan."));
       return;
     }
 
@@ -449,7 +457,7 @@ export default function SettingsMenuPage() {
     const actor = (currentUser?.name || currentUser?.username || currentUser?.email || "").trim();
 
     if (!actor) {
-      toast.error("User login tidak ditemukan.");
+      toast.error(t("User login tidak ditemukan."));
       return;
     }
 
@@ -486,9 +494,9 @@ export default function SettingsMenuPage() {
       );
 
       handleCloseForm(false);
-      toast.success(`Perubahan menu "${normalizedName}" berhasil disimpan.`);
+      toast.success(t('Perubahan menu "{name}" berhasil disimpan.', { name: normalizedName }));
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Gagal mengubah menu.";
+      const message = error instanceof Error ? error.message : t("Gagal mengubah menu.");
       toast.error(message);
     } finally {
       setIsSaving(false);
@@ -514,8 +522,8 @@ export default function SettingsMenuPage() {
       />
 
       <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Menu</h1>
-        <p className="text-sm text-muted-foreground">Manage menu for manufacturing process control and monitoring.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("Menu")}</h1>
+        <p className="text-sm text-muted-foreground">{t("Manage menu for manufacturing process control and monitoring.")}</p>
       </div>
 
       <div className="flex items-center justify-between">
@@ -527,13 +535,13 @@ export default function SettingsMenuPage() {
               setSearch(e.target.value);
               setPage(1);
             }}
-            placeholder="Search menu..."
+            placeholder={t("Search menu...")}
             className="w-full px-9"
           />
         </div>
 
         <Button className="font-medium" onClick={handleOpenCreate}>
-          + Add Menu
+          {t("+ Add Menu")}
         </Button>
       </div>
 
@@ -541,16 +549,16 @@ export default function SettingsMenuPage() {
         <Table containerClassName="rounded-none border-0 bg-transparent">
           <TableHeader>
             <TableRow>
-              <TableHead>Menu Name</TableHead>
-              <TableHead>Parent Menu</TableHead>
-              <TableHead>Seq</TableHead>
-              <TableHead>Buttons</TableHead>
-              <TableHead>Development</TableHead>
-              <TableHead>Active</TableHead>
-              <TableHead>Visible</TableHead>
-              <TableHead>Created By</TableHead>
-              <TableHead>Created Date</TableHead>
-              <TableHead className="w-24 text-center">Actions</TableHead>
+              <TableHead>{t("Menu Name")}</TableHead>
+              <TableHead>{t("Parent Menu")}</TableHead>
+              <TableHead>{t("Seq")}</TableHead>
+              <TableHead>{t("Buttons")}</TableHead>
+              <TableHead>{t("Development")}</TableHead>
+              <TableHead>{t("Active")}</TableHead>
+              <TableHead>{t("Visible")}</TableHead>
+              <TableHead>{t("Created By")}</TableHead>
+              <TableHead>{t("Created Date")}</TableHead>
+              <TableHead className="w-24 text-center">{t("Actions")}</TableHead>
             </TableRow>
           </TableHeader>
 
@@ -560,21 +568,21 @@ export default function SettingsMenuPage() {
                 <TableRow className="transition hover:bg-muted/40">
                   <TableCell>
                     <div className="flex items-center gap-3">
-                      <span>{parent.name}</span>
+                      <span>{t(parent.name)}</span>
                       {parent.subMenu.length > 0 && (
                         <Badge variant="outline" className="rounded-full font-normal">
-                          {parent.subMenu.length} submenus
+                          {t("{count} submenus", { count: parent.subMenu.length })}
                         </Badge>
                       )}
                     </div>
                   </TableCell>
-                  <TableCell>{parent.parentId ? menuNameById.get(normalizeMenuId(parent.parentId)) || "Unknown Parent" : "Root"}</TableCell>
+                  <TableCell>{parent.parentId ? t(menuNameById.get(normalizeMenuId(parent.parentId)) || "Unknown Parent") : t("Root")}</TableCell>
                   <TableCell>{parent.seq ?? "-"}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-2">
                       {parent.functionBtn.map((button) => (
                         <Badge key={`${parent.newId}-${button.name}-${button.path}`} variant="secondary" className="font-normal">
-                          {button.name}
+                          {t(button.name)}
                         </Badge>
                       ))}
                     </div>
@@ -604,16 +612,16 @@ export default function SettingsMenuPage() {
                     <TableCell>
                       <div className="flex items-center gap-3 pl-6 text-muted-foreground">
                         <Circle className="h-3.5 w-3.5" />
-                        <span className="text-foreground">{child.name}</span>
+                        <span className="text-foreground">{t(child.name)}</span>
                       </div>
                     </TableCell>
-                    <TableCell>{menuNameById.get(normalizeMenuId(child.parentId)) || parent.name}</TableCell>
+                    <TableCell>{t(menuNameById.get(normalizeMenuId(child.parentId)) || parent.name)}</TableCell>
                     <TableCell>{child.seq ?? "-"}</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-2">
                         {child.functionBtn.map((button) => (
                           <Badge key={`${child.newId}-${button.name}-${button.path}`} variant="secondary" className="font-normal">
-                            {button.name}
+                            {t(button.name)}
                           </Badge>
                         ))}
                       </div>
@@ -644,7 +652,7 @@ export default function SettingsMenuPage() {
             {isLoading && (
               <TableRow>
                 <TableCell colSpan={10} className="py-6 text-center text-muted-foreground">
-                  Loading data...
+                  {t("Loading data...")}
                 </TableCell>
               </TableRow>
             )}
@@ -652,7 +660,7 @@ export default function SettingsMenuPage() {
             {!isLoading && paginated.length === 0 && (
               <TableRow>
                 <TableCell colSpan={10} className="py-6 text-center text-muted-foreground">
-                  No data found
+                  {t("No data found")}
                 </TableCell>
               </TableRow>
             )}
@@ -661,7 +669,7 @@ export default function SettingsMenuPage() {
 
         <div className="flex flex-col gap-2 border-t px-3 py-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>
-            Showing {fromEntry} to {toEntry} of {totalEntries} entries
+            {t("Showing {from} to {to} of {total} entries", { from: fromEntry, to: toEntry, total: totalEntries })}
           </span>
 
           <div className="flex items-center gap-2">
@@ -669,7 +677,7 @@ export default function SettingsMenuPage() {
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="min-w-24 text-center text-foreground">
-              Page {page} of {totalPages || 1}
+              {t("Page {page} of {total}", { page, total: totalPages || 1 })}
             </span>
             <Button variant="outline" size="icon" className="h-8 w-8" disabled={page === totalPages || totalPages === 0} onClick={() => setPage((p) => p + 1)}>
               <ChevronRight className="h-4 w-4" />
@@ -681,13 +689,13 @@ export default function SettingsMenuPage() {
       <Dialog open={openForm} onOpenChange={handleCloseForm}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{mode === "create" ? "Add New Menu" : mode === "child" ? "Add Child Menu" : "Edit Menu"}</DialogTitle>
+            <DialogTitle>{mode === "create" ? t("Add New Menu") : mode === "child" ? t("Add Child Menu") : t("Edit Menu")}</DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
               {mode === "create"
-                ? "Create a new menu item. Fill in the details below."
+                ? t("Create a new menu item. Fill in the details below.")
                 : mode === "child"
-                  ? `Create a child menu under ${selected?.name || "this menu"}.`
-                  : "Update the menu item details below."}
+                  ? t("Create a child menu under {name}.", { name: selected?.name ? t(selected.name) : t("this menu") })
+                  : t("Update the menu item details below.")}
             </DialogDescription>
           </DialogHeader>
 
@@ -695,61 +703,61 @@ export default function SettingsMenuPage() {
             <div className="space-y-5">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="child-menu-name">Menu Name *</Label>
-                  <Input id="child-menu-name" value={menuName} onChange={(e) => setMenuName(e.target.value)} placeholder="Enter menu name" />
+                  <Label htmlFor="child-menu-name">{t("Menu Name")} *</Label>
+                  <Input id="child-menu-name" value={menuName} onChange={(e) => setMenuName(e.target.value)} placeholder={t("Enter menu name")} />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="child-parent-menu">Parent Menu</Label>
-                  <Input id="child-parent-menu" value={selected?.name || ""} readOnly disabled />
+                  <Label htmlFor="child-parent-menu">{t("Parent Menu")}</Label>
+                  <Input id="child-parent-menu" value={selected?.name ? t(selected.name) : ""} readOnly disabled />
                 </div>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="child-menu-seq">Sequence *</Label>
+                  <Label htmlFor="child-menu-seq">{t("Sequence")} *</Label>
                   <Input id="child-menu-seq" type="number" min="0" value={seq} onChange={(e) => setSeq(e.target.value)} placeholder="0" />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="child-menu-icon">Icon *</Label>
-                  <Input id="child-menu-icon" value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="Enter icon name" />
+                  <Label htmlFor="child-menu-icon">{t("Icon")} *</Label>
+                  <Input id="child-menu-icon" value={icon} onChange={(e) => setIcon(e.target.value)} placeholder={t("Enter icon name")} />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="child-menu-path">Path *</Label>
-                <Input id="child-menu-path" value={path} onChange={(e) => setPath(e.target.value)} placeholder="Enter menu path/URL" />
+                <Label htmlFor="child-menu-path">{t("Path")} *</Label>
+                <Input id="child-menu-path" value={path} onChange={(e) => setPath(e.target.value)} placeholder={t("Enter menu path/URL")} />
               </div>
             </div>
           ) : (
             <div className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="create-menu-name">Menu Name *</Label>
-                <Input id="create-menu-name" value={menuName} onChange={(e) => setMenuName(e.target.value)} placeholder="Enter menu name" />
+                <Label htmlFor="create-menu-name">{t("Menu Name")} *</Label>
+                <Input id="create-menu-name" value={menuName} onChange={(e) => setMenuName(e.target.value)} placeholder={t("Enter menu name")} />
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="create-menu-seq">Sequence *</Label>
+                  <Label htmlFor="create-menu-seq">{t("Sequence")} *</Label>
                   <Input id="create-menu-seq" type="number" min="0" value={seq} onChange={(e) => setSeq(e.target.value)} placeholder="0" />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="create-menu-icon">Icon *</Label>
-                  <Input id="create-menu-icon" value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="Enter icon name" />
+                  <Label htmlFor="create-menu-icon">{t("Icon")} *</Label>
+                  <Input id="create-menu-icon" value={icon} onChange={(e) => setIcon(e.target.value)} placeholder={t("Enter icon name")} />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="create-menu-path">Path *</Label>
-                <Input id="create-menu-path" value={path} onChange={(e) => setPath(e.target.value)} placeholder="Enter menu path/URL" />
+                <Label htmlFor="create-menu-path">{t("Path")} *</Label>
+                <Input id="create-menu-path" value={path} onChange={(e) => setPath(e.target.value)} placeholder={t("Enter menu path/URL")} />
               </div>
 
               <div className="flex items-center justify-between rounded-md border p-3">
                 <div className="space-y-0.5">
-                  <Label>Is Visible</Label>
-                  <p className="text-xs text-muted-foreground">Show this menu in navigation.</p>
+                  <Label>{t("Is Visible")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("Show this menu in navigation.")}</p>
                 </div>
                 <Switch checked={isVisible} onCheckedChange={setIsVisible} />
               </div>
@@ -757,8 +765,8 @@ export default function SettingsMenuPage() {
               {mode === "edit" && (
                 <div className="flex items-center justify-between rounded-md border p-3">
                   <div className="space-y-0.5">
-                    <Label>Is Active</Label>
-                    <p className="text-xs text-muted-foreground">Enable or disable this menu.</p>
+                    <Label>{t("Is Active")}</Label>
+                    <p className="text-xs text-muted-foreground">{t("Enable or disable this menu.")}</p>
                   </div>
                   <Switch checked={isActive} onCheckedChange={setIsActive} />
                 </div>
@@ -766,8 +774,8 @@ export default function SettingsMenuPage() {
 
               <div className="flex items-center justify-between rounded-md border p-3">
                 <div className="space-y-0.5">
-                  <Label>Is Development</Label>
-                  <p className="text-xs text-muted-foreground">Mark this menu for development only.</p>
+                  <Label>{t("Is Development")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("Mark this menu for development only.")}</p>
                 </div>
                 <Switch checked={isDevelopment} onCheckedChange={setIsDevelopment} />
               </div>
@@ -776,10 +784,10 @@ export default function SettingsMenuPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => handleCloseForm(false)} disabled={isSaving}>
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button onClick={() => void (mode === "edit" ? handleEdit() : handleCreate())} disabled={isSaving}>
-              {isSaving ? "Saving..." : mode === "edit" ? "Update" : mode === "child" ? "Create Child Menu" : "Save"}
+              {isSaving ? t("Saving...") : mode === "edit" ? t("Update") : mode === "child" ? t("Create Child Menu") : t("Save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -788,48 +796,48 @@ export default function SettingsMenuPage() {
       <Dialog open={openButtonFunction} onOpenChange={handleCloseButtonFunction}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Button Function</DialogTitle>
+            <DialogTitle>{t("Add Button Function")}</DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
-              Add a new button. Fill in the details below.
+              {t("Add a new button. Fill in the details below.")}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-5">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="button-function-name">Button Name *</Label>
+                <Label htmlFor="button-function-name">{t("Button Name")} *</Label>
                 <Input
                   id="button-function-name"
                   value={buttonFunctionName}
                   onChange={(e) => setButtonFunctionName(e.target.value)}
-                  placeholder="e.g., Edit, Delete, View"
+                  placeholder={t("e.g., Edit, Delete, View")}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="button-function-menu">Target Menu</Label>
-                <Input id="button-function-menu" value={selected?.name || ""} readOnly disabled />
+                <Label htmlFor="button-function-menu">{t("Target Menu")}</Label>
+                <Input id="button-function-menu" value={selected?.name ? t(selected.name) : ""} readOnly disabled />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="button-function-path">Button Path/URL</Label>
+              <Label htmlFor="button-function-path">{t("Button Path/URL")}</Label>
               <Input
                 id="button-function-path"
                 value={buttonFunctionPath}
                 onChange={(e) => setButtonFunctionPath(e.target.value)}
-                placeholder="Enter button path or URL (optional)"
+                placeholder={t("Enter button path or URL (optional)")}
               />
-              <p className="text-xs text-muted-foreground">Optional: Specify a custom path or URL for this button function</p>
+              <p className="text-xs text-muted-foreground">{t("Optional: Specify a custom path or URL for this button function")}</p>
             </div>
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => handleCloseButtonFunction(false)} disabled={isSaving}>
-              Close
+              {t("Close")}
             </Button>
             <Button onClick={() => void handleCreateButtonFunction()} disabled={isSaving}>
-              {isSaving ? "Saving..." : "Add Button Function"}
+              {isSaving ? t("Saving...") : t("Add Button Function")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -24,6 +24,7 @@ import {
   type ShippingIncidentDetail,
 } from "@/lib/api/shipping-incident";
 import { formatPlanDate, formatPlanDateTime, formatRupiah } from "@/lib/api/shipping-plan";
+import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 
 const STATUS_OPTIONS: { status: IncidentStatus; hint: string; icon: typeof Inbox }[] = [
@@ -39,15 +40,17 @@ const addDays = (days: number) => new Date(Date.now() + days * 86_400_000).toISO
 const TEXTAREA_CLASS = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  const { t } = useI18n();
   return (
     <div className="space-y-1">
-      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t(label)}</div>
       <div className="text-sm">{children}</div>
     </div>
   );
 }
 
 export default function ShippingIncidentDetailPage() {
+  const { t } = useI18n();
   const { newId } = useParams<{ newId: string }>();
   const [incident, setIncident] = useState<ShippingIncidentDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,16 +78,17 @@ export default function ShippingIncidentDetailPage() {
     const id = window.setTimeout(() => {
       getShippingIncident(newId, getStoredAuthToken() ?? undefined)
         .then(fill)
-        .catch((e) => setError(e instanceof Error ? e.message : "Gagal mengambil insiden."));
+        .catch((e) => setError(e instanceof Error ? e.message : t("Gagal mengambil insiden.")));
       listCarrierLov(getStoredAuthToken() ?? undefined)
         .then(setCarriers)
         .catch(() => setCarriers([]));
     }, 0);
     return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newId, fill]);
 
   if (error) return <div className="p-6 text-sm text-destructive">{error}</div>;
-  if (!incident) return <div className="p-6 text-sm text-muted-foreground">Loading...</div>;
+  if (!incident) return <div className="p-6 text-sm text-muted-foreground">{t("Loading...")}</div>;
 
   const amount = claimAmount.trim() === "" ? null : Number(claimAmount);
   const closing = status === "RESOLVED" || status === "REJECTED";
@@ -100,9 +104,9 @@ export default function ShippingIncidentDetailPage() {
   const hint = STATUS_OPTIONS.find((o) => o.status === status)?.hint;
 
   async function save() {
-    if (closing && !solution.trim()) return void toast.error(status === "RESOLVED" ? "Isi solusi untuk menyelesaikan insiden." : "Isi alasan penolakan di kolom solusi.");
-    if (status === "CLAIM_FILED" && (!amount || !claimParty.trim())) return void toast.error("Isi nilai klaim dan pihak yang ditagih.");
-    if (amount !== null && (!Number.isInteger(amount) || amount < 0)) return void toast.error("Nilai klaim harus rupiah bulat, 0 atau lebih.");
+    if (closing && !solution.trim()) return void toast.error(status === "RESOLVED" ? t("Isi solusi untuk menyelesaikan insiden.") : t("Isi alasan penolakan di kolom solusi."));
+    if (status === "CLAIM_FILED" && (!amount || !claimParty.trim())) return void toast.error(t("Isi nilai klaim dan pihak yang ditagih."));
+    if (amount !== null && (!Number.isInteger(amount) || amount < 0)) return void toast.error(t("Nilai klaim harus rupiah bulat, 0 atau lebih."));
 
     setIsSaving(true);
     try {
@@ -119,9 +123,9 @@ export default function ShippingIncidentDetailPage() {
         getStoredAuthToken() ?? undefined,
       );
       fill(saved);
-      toast.success("Penanganan tersimpan.");
+      toast.success(t("Penanganan tersimpan."));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan penanganan.");
+      toast.error(e instanceof Error ? e.message : t("Gagal menyimpan penanganan."));
     } finally {
       setIsSaving(false);
     }
@@ -133,11 +137,11 @@ export default function ShippingIncidentDetailPage() {
 
       <div className="space-y-2">
         <Link href="/shipping/incident" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
-          <ChevronLeft className="mr-1 h-4 w-4" /> Kembali ke daftar insiden
+          <ChevronLeft className="mr-1 h-4 w-4" /> {t("Kembali ke daftar insiden")}
         </Link>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">{incident.incidentNo}</h1>
-          <span className="rounded-md border px-2 py-0.5 text-sm">{INCIDENT_TYPE_LABEL[incident.type]}</span>
+          <span className="rounded-md border px-2 py-0.5 text-sm">{t(INCIDENT_TYPE_LABEL[incident.type])}</span>
           <IncidentStatusBadge status={incident.status} />
         </div>
       </div>
@@ -146,7 +150,7 @@ export default function ShippingIncidentDetailPage() {
         <div className="space-y-6 lg:col-span-2">
           <section className="space-y-4 rounded-lg border p-5">
             <h2 className="flex items-center gap-2 text-lg font-semibold">
-              <FileWarning className="h-5 w-5 text-amber-600" /> Kejadian
+              <FileWarning className="h-5 w-5 text-amber-600" /> {t("Kejadian")}
             </h2>
             <p className="whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-sm leading-relaxed">{incident.description}</p>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -167,17 +171,17 @@ export default function ShippingIncidentDetailPage() {
               <Field label="Estimasi selesai">
                 <span className={cn(overdue && "font-medium text-red-600")}>
                   {formatPlanDate(incident.targetDate)}
-                  {overdue && " (terlewat)"}
+                  {overdue && ` ${t("(terlewat)")}`}
                 </span>
               </Field>
             </div>
           </section>
 
           <section className="space-y-5 rounded-lg border p-5">
-            <h2 className="text-lg font-semibold">Penanganan</h2>
+            <h2 className="text-lg font-semibold">{t("Penanganan")}</h2>
 
             <div className="space-y-2">
-              <Label>Status</Label>
+              <Label>{t("Status")}</Label>
               <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
                 {STATUS_OPTIONS.map(({ status: value, icon: Icon }) => (
                   <button
@@ -191,16 +195,16 @@ export default function ShippingIncidentDetailPage() {
                     )}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
-                    {INCIDENT_STATUS_LABEL[value]}
+                    {t(INCIDENT_STATUS_LABEL[value])}
                   </button>
                 ))}
               </div>
-              {hint && <p className="text-sm text-muted-foreground">{hint}</p>}
+              {hint && <p className="text-sm text-muted-foreground">{t(hint)}</p>}
             </div>
 
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
-                <CalendarClock className="h-4 w-4" /> Estimasi selesai ditangani
+                <CalendarClock className="h-4 w-4" /> {t("Estimasi selesai ditangani")}
               </Label>
               <div className="flex flex-wrap items-center gap-2">
                 <Input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="w-44" />
@@ -210,12 +214,12 @@ export default function ShippingIncidentDetailPage() {
                   ["+7 hari", 7],
                 ].map(([label, days]) => (
                   <Button key={label} type="button" variant="outline" size="sm" onClick={() => setTargetDate(addDays(days as number))}>
-                    {label}
+                    {t(label as string)}
                   </Button>
                 ))}
                 {targetDate && (
                   <Button type="button" variant="ghost" size="sm" onClick={() => setTargetDate("")}>
-                    Hapus
+                    {t("Hapus")}
                   </Button>
                 )}
               </div>
@@ -224,18 +228,18 @@ export default function ShippingIncidentDetailPage() {
             {showClaim && (
               <div className="grid gap-4 rounded-md border bg-muted/20 p-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label>Nilai klaim (Rp){status === "CLAIM_FILED" && <span className="text-red-600"> *</span>}</Label>
+                  <Label>{t("Nilai klaim (Rp)")}{status === "CLAIM_FILED" && <span className="text-red-600"> *</span>}</Label>
                   <Input value={claimAmount} onChange={(e) => setClaimAmount(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="0" />
                   {amount ? <div className="text-xs text-muted-foreground">{formatRupiah(amount)}</div> : null}
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Pihak yang ditagih{status === "CLAIM_FILED" && <span className="text-red-600"> *</span>}</Label>
+                  <Label>{t("Pihak yang ditagih")}{status === "CLAIM_FILED" && <span className="text-red-600"> *</span>}</Label>
                   <Combobox
-                    options={carriers.map((c) => ({ value: c.label, label: c.label, description: c.type === "OWN" ? "Armada sendiri" : "3PL" }))}
+                    options={carriers.map((c) => ({ value: c.label, label: c.label, description: c.type === "OWN" ? t("Armada sendiri") : "3PL" }))}
                     value={claimParty}
                     onChange={setClaimParty}
-                    placeholder={incident.carrierName ?? "Carrier / asuransi"}
-                    searchPlaceholder="Cari carrier atau ketik pihak lain..."
+                    placeholder={incident.carrierName ?? t("Carrier / asuransi")}
+                    searchPlaceholder={t("Cari carrier atau ketik pihak lain...")}
                     allowCustom
                     clearable
                   />
@@ -245,40 +249,40 @@ export default function ShippingIncidentDetailPage() {
 
             <div className="space-y-1.5">
               <Label>
-                Solusi{closing && <span className="text-red-600"> *</span>}
+                {t("Solusi")}{closing && <span className="text-red-600"> *</span>}
               </Label>
               <textarea
                 value={solution}
                 onChange={(e) => setSolution(e.target.value)}
                 rows={3}
-                placeholder="Penyelesaiannya: ganti barang, potong tagihan, kirim ulang..."
+                placeholder={t("Penyelesaiannya: ganti barang, potong tagihan, kirim ulang...")}
                 className={TEXTAREA_CLASS}
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label>Catatan perkembangan (opsional)</Label>
+              <Label>{t("Catatan perkembangan (opsional)")}</Label>
               <textarea
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 rows={2}
-                placeholder="Mis. sudah telepon carrier, menunggu foto kerusakan"
+                placeholder={t("Mis. sudah telepon carrier, menunggu foto kerusakan")}
                 className={TEXTAREA_CLASS}
               />
-              <p className="text-xs text-muted-foreground">Masuk ke riwayat kejadian di samping.</p>
+              <p className="text-xs text-muted-foreground">{t("Masuk ke riwayat kejadian di samping.")}</p>
             </div>
 
             <div className="flex items-center justify-end gap-3">
-              {!dirty && <span className="text-sm text-muted-foreground">Belum ada perubahan</span>}
+              {!dirty && <span className="text-sm text-muted-foreground">{t("Belum ada perubahan")}</span>}
               <Button onClick={() => void save()} disabled={isSaving || !dirty}>
-                <Save className="mr-2 h-4 w-4" /> Simpan Penanganan
+                <Save className="mr-2 h-4 w-4" /> {t("Simpan Penanganan")}
               </Button>
             </div>
           </section>
         </div>
 
         <section className="h-fit space-y-4 rounded-lg border p-5">
-          <h2 className="text-lg font-semibold">Riwayat Kejadian</h2>
+          <h2 className="text-lg font-semibold">{t("Riwayat Kejadian")}</h2>
           <ol className="space-y-4 border-l pl-4">
             {incident.history.map((h, index) => (
               <li key={index} className="relative space-y-0.5">
@@ -287,12 +291,12 @@ export default function ShippingIncidentDetailPage() {
                   {h.fromStatus && h.fromStatus !== h.toStatus
                     ? (
                         <>
-                          {INCIDENT_STATUS_LABEL[h.fromStatus as IncidentStatus] ?? h.fromStatus}
+                          {INCIDENT_STATUS_LABEL[h.fromStatus as IncidentStatus] ? t(INCIDENT_STATUS_LABEL[h.fromStatus as IncidentStatus]) : h.fromStatus}
                           <Arrow />
-                          {INCIDENT_STATUS_LABEL[h.toStatus]}
+                          {t(INCIDENT_STATUS_LABEL[h.toStatus])}
                         </>
                       )
-                    : INCIDENT_STATUS_LABEL[h.toStatus]}
+                    : t(INCIDENT_STATUS_LABEL[h.toStatus])}
                 </div>
                 {h.note && <div className="text-sm text-muted-foreground">{h.note}</div>}
                 <div className="text-xs text-muted-foreground">

@@ -24,6 +24,7 @@ import {
   type AuditPage,
 } from "@/lib/api/audit-trail";
 import { downloadAuditPdf, downloadAuditXlsx } from "@/lib/audit-report";
+import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 
 const TIME_ZONE = "Asia/Jakarta"; // keep in line with APP_TIME_ZONE on the server
@@ -47,6 +48,7 @@ const ACTIVITY_STYLE: Record<string, string> = {
 };
 
 export default function AuditTrailPage() {
+  const { t } = useI18n();
   const [from, setFrom] = useState(() => isoDay(-6));
   const [to, setTo] = useState(() => isoDay());
   const [search, setSearch] = useState("");
@@ -80,7 +82,7 @@ export default function AuditTrailPage() {
 
   const load = useCallback(async () => {
     if (from > to) {
-      setLoadError("Tanggal mulai tidak boleh setelah tanggal akhir.");
+      setLoadError(t("Tanggal mulai tidak boleh setelah tanggal akhir."));
       return;
     }
     setIsLoading(true);
@@ -88,11 +90,11 @@ export default function AuditTrailPage() {
       setData(await listAuditTrail({ from, to, q: debouncedSearch, module, activity, user, page, pageSize: PAGE_SIZE }, getStoredAuthToken() ?? undefined));
       setLoadError(null);
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Gagal mengambil audit trail.");
+      setLoadError(e instanceof Error ? e.message : t("Gagal mengambil audit trail."));
     } finally {
       setIsLoading(false);
     }
-  }, [from, to, debouncedSearch, module, activity, user, page]);
+  }, [from, to, debouncedSearch, module, activity, user, page, t]);
 
   useEffect(() => {
     const id = window.setTimeout(() => void load(), 0);
@@ -107,7 +109,7 @@ export default function AuditTrailPage() {
   };
 
   const moduleOptions = useMemo(() => facets.modules.map((m) => ({ value: m, label: m })), [facets.modules]);
-  const activityOptions = useMemo(() => facets.activities.map((a) => ({ value: a, label: auditActivityLabel(a) })), [facets.activities]);
+  const activityOptions = useMemo(() => facets.activities.map((a) => ({ value: a, label: auditActivityLabel(a, t) })), [facets.activities, t]);
   const userOptions = useMemo(() => facets.users.map((u) => ({ value: u.username, label: u.name ?? u.username, description: u.name ? u.username : undefined })), [facets.users]);
 
   function openDownloadDialog() {
@@ -118,9 +120,9 @@ export default function AuditTrailPage() {
   }
 
   async function download(format: "pdf" | "xlsx") {
-    if (!dlFrom || !dlTo) return void toast.error("Pilih tanggal mulai dan tanggal akhir.");
-    if (dlFrom > dlTo) return void toast.error("Tanggal mulai tidak boleh setelah tanggal akhir.");
-    if (daysBetween(dlFrom, dlTo) > MAX_REPORT_DAYS) return void toast.error(`Rentang tanggal maksimal ${MAX_REPORT_DAYS} hari.`);
+    if (!dlFrom || !dlTo) return void toast.error(t("Pilih tanggal mulai dan tanggal akhir."));
+    if (dlFrom > dlTo) return void toast.error(t("Tanggal mulai tidak boleh setelah tanggal akhir."));
+    if (daysBetween(dlFrom, dlTo) > MAX_REPORT_DAYS) return void toast.error(t("Rentang tanggal maksimal {days} hari.", { days: MAX_REPORT_DAYS }));
 
     setDownloading(format);
     try {
@@ -128,13 +130,13 @@ export default function AuditTrailPage() {
         { from: dlFrom, to: dlTo, format, ...(dlUseFilters ? { q: debouncedSearch, module, activity, user } : {}) },
         getStoredAuthToken() ?? undefined,
       );
-      if (format === "pdf") await downloadAuditPdf(report);
-      else await downloadAuditXlsx(report);
-      toast.success(`Laporan diunduh (${report.rows.length} aktivitas).`);
+      if (format === "pdf") await downloadAuditPdf(report, t);
+      else await downloadAuditXlsx(report, t);
+      toast.success(t("Laporan diunduh ({count} aktivitas).", { count: report.rows.length }));
       setOpenDownload(false);
       void load(); // the download itself is now in the trail
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal membuat laporan.");
+      toast.error(e instanceof Error ? e.message : t("Gagal membuat laporan."));
     } finally {
       setDownloading(null);
     }
@@ -147,37 +149,37 @@ export default function AuditTrailPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold tracking-tight">Audit Trail</h1>
-          <p className="text-sm text-muted-foreground">Catatan siapa melakukan apa dan kapan di seluruh aplikasi. Perubahan data ditulis spesifik, dan simpan tanpa perubahan tidak dicatat.</p>
+          <p className="text-sm text-muted-foreground">{t("Catatan siapa melakukan apa dan kapan di seluruh aplikasi. Perubahan data ditulis spesifik, dan simpan tanpa perubahan tidak dicatat.")}</p>
         </div>
         <Button onClick={openDownloadDialog}>
-          <Download className="mr-2 h-4 w-4" /> Download Report
+          <Download className="mr-2 h-4 w-4" /> {t("Download Report")}
         </Button>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Dari tanggal</Label>
+          <Label className="text-xs text-muted-foreground">{t("Dari tanggal")}</Label>
           <Input type="date" value={from} max={to} onChange={(e) => withFirstPage(setFrom)(e.target.value)} className="w-40" />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Sampai tanggal</Label>
+          <Label className="text-xs text-muted-foreground">{t("Sampai tanggal")}</Label>
           <Input type="date" value={to} min={from} onChange={(e) => withFirstPage(setTo)(e.target.value)} className="w-40" />
         </div>
         <div className="w-48 space-y-1">
-          <Label className="text-xs text-muted-foreground">Pengguna</Label>
-          <Combobox options={userOptions} value={user} onChange={withFirstPage(setUser)} placeholder="Semua pengguna" searchPlaceholder="Cari pengguna..." clearable />
+          <Label className="text-xs text-muted-foreground">{t("Pengguna")}</Label>
+          <Combobox options={userOptions} value={user} onChange={withFirstPage(setUser)} placeholder={t("Semua pengguna")} searchPlaceholder={t("Cari pengguna...")} clearable />
         </div>
         <div className="w-44 space-y-1">
-          <Label className="text-xs text-muted-foreground">Modul</Label>
-          <Combobox options={moduleOptions} value={module} onChange={withFirstPage(setModule)} placeholder="Semua modul" searchPlaceholder="Cari modul..." clearable />
+          <Label className="text-xs text-muted-foreground">{t("Modul")}</Label>
+          <Combobox options={moduleOptions} value={module} onChange={withFirstPage(setModule)} placeholder={t("Semua modul")} searchPlaceholder={t("Cari modul...")} clearable />
         </div>
         <div className="w-44 space-y-1">
-          <Label className="text-xs text-muted-foreground">Aktivitas</Label>
-          <Combobox options={activityOptions} value={activity} onChange={withFirstPage(setActivity)} placeholder="Semua aktivitas" searchPlaceholder="Cari aktivitas..." clearable />
+          <Label className="text-xs text-muted-foreground">{t("Aktivitas")}</Label>
+          <Combobox options={activityOptions} value={activity} onChange={withFirstPage(setActivity)} placeholder={t("Semua aktivitas")} searchPlaceholder={t("Cari aktivitas...")} clearable />
         </div>
         <div className="relative w-64">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={search} onChange={(e) => withFirstPage(setSearch)(e.target.value)} placeholder="Cari nama atau catatan..." className="px-9" />
+          <Input value={search} onChange={(e) => withFirstPage(setSearch)(e.target.value)} placeholder={t("Cari nama atau catatan...")} className="px-9" />
         </div>
         {hasFilter && (
           <Button
@@ -190,7 +192,7 @@ export default function AuditTrailPage() {
               setPage(1);
             }}
           >
-            Reset
+            {t("Reset")}
           </Button>
         )}
       </div>
@@ -201,18 +203,18 @@ export default function AuditTrailPage() {
         <Table containerClassName="rounded-none border-0 bg-transparent">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-56">Nama</TableHead>
-              <TableHead className="w-40">Waktu</TableHead>
-              <TableHead className="w-40">Aktivitas</TableHead>
-              <TableHead className="w-44">Modul</TableHead>
-              <TableHead>Catatan</TableHead>
+              <TableHead className="w-56">{t("Nama")}</TableHead>
+              <TableHead className="w-40">{t("Waktu")}</TableHead>
+              <TableHead className="w-40">{t("Aktivitas")}</TableHead>
+              <TableHead className="w-44">{t("Modul")}</TableHead>
+              <TableHead>{t("Catatan")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {(data?.rows ?? []).map((row) => (
               <TableRow key={row.id} className="align-top">
                 <TableCell>
-                  <div className="font-medium">{row.actorName ?? row.username ?? "Tidak diketahui"}</div>
+                  <div className="font-medium">{row.actorName ?? row.username ?? t("Tidak diketahui")}</div>
                   <div className="text-xs text-muted-foreground">
                     {row.username && row.username !== row.actorName ? row.username : null}
                     {row.actorRole ? `${row.username && row.username !== row.actorName ? " · " : ""}${row.actorRole}` : null}
@@ -225,7 +227,7 @@ export default function AuditTrailPage() {
                   </div>
                 </TableCell>
                 <TableCell>
-                  <Badge className={cn("border font-medium hover:bg-inherit", ACTIVITY_STYLE[row.activity] ?? "border-slate-200 bg-slate-100 text-slate-600")}>{auditActivityLabel(row.activity)}</Badge>
+                  <Badge className={cn("border font-medium hover:bg-inherit", ACTIVITY_STYLE[row.activity] ?? "border-slate-200 bg-slate-100 text-slate-600")}>{auditActivityLabel(row.activity, t)}</Badge>
                 </TableCell>
                 <TableCell>{row.module}</TableCell>
                 <TableCell className="whitespace-normal leading-relaxed">{row.note}</TableCell>
@@ -234,14 +236,14 @@ export default function AuditTrailPage() {
             {!isLoading && (data?.rows.length ?? 0) === 0 && (
               <TableRow>
                 <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                  Tidak ada aktivitas pada periode dan filter ini
+                  {t("Tidak ada aktivitas pada periode dan filter ini")}
                 </TableCell>
               </TableRow>
             )}
             {isLoading && !data && (
               <TableRow>
                 <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                  Loading data...
+                  {t("Loading data...")}
                 </TableCell>
               </TableRow>
             )}
@@ -249,13 +251,13 @@ export default function AuditTrailPage() {
         </Table>
 
         <div className="flex flex-col gap-2 border-t px-3 py-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <span>{data ? `${data.total} aktivitas` : ""}</span>
+          <span>{data ? t("{count} aktivitas", { count: data.total }) : ""}</span>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="icon" className="h-8 w-8" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="min-w-24 text-center text-foreground">
-              Page {page} of {totalPages}
+              {t("Page {page} of {total}", { page, total: totalPages })}
             </span>
             <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
               <ChevronRight className="h-4 w-4" />
@@ -267,20 +269,20 @@ export default function AuditTrailPage() {
       <Dialog open={openDownload} onOpenChange={setOpenDownload}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Download Report Audit Trail</DialogTitle>
+            <DialogTitle>{t("Download Report Audit Trail")}</DialogTitle>
             <DialogDescription>
-              Pilih periode laporan, maksimal {MAX_REPORT_DAYS} hari. Laporan memuat waktu cetak, siapa yang mencetak, dan nomor halaman.
+              {t("Pilih periode laporan, maksimal {days} hari. Laporan memuat waktu cetak, siapa yang mencetak, dan nomor halaman.", { days: MAX_REPORT_DAYS })}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label>Dari tanggal</Label>
+                <Label>{t("Dari tanggal")}</Label>
                 <Input type="date" value={dlFrom} max={dlTo || undefined} onChange={(e) => setDlFrom(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <Label>Sampai tanggal</Label>
+                <Label>{t("Sampai tanggal")}</Label>
                 <Input type="date" value={dlTo} min={dlFrom || undefined} onChange={(e) => setDlTo(e.target.value)} />
               </div>
             </div>
@@ -300,28 +302,28 @@ export default function AuditTrailPage() {
                     setDlTo(isoDay());
                   }}
                 >
-                  {label} terakhir
+                  {t("{period} terakhir", { period: t(label as string) })}
                 </Button>
               ))}
             </div>
             {hasFilter && (
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={dlUseFilters} onChange={(e) => setDlUseFilters(e.target.checked)} className="h-4 w-4" />
-                Terapkan filter yang sedang aktif (pengguna, modul, aktivitas, pencarian)
+                {t("Terapkan filter yang sedang aktif (pengguna, modul, aktivitas, pencarian)")}
               </label>
             )}
           </div>
 
           <DialogFooter className="gap-2 sm:justify-between">
             <Button variant="outline" onClick={() => setOpenDownload(false)} disabled={downloading !== null}>
-              Batal
+              {t("Batal")}
             </Button>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => void download("xlsx")} disabled={downloading !== null}>
-                <FileSpreadsheet className="mr-2 h-4 w-4" /> {downloading === "xlsx" ? "Membuat..." : "Excel"}
+                <FileSpreadsheet className="mr-2 h-4 w-4" /> {downloading === "xlsx" ? t("Membuat...") : "Excel"}
               </Button>
               <Button onClick={() => void download("pdf")} disabled={downloading !== null}>
-                <FileText className="mr-2 h-4 w-4" /> {downloading === "pdf" ? "Membuat..." : "PDF"}
+                <FileText className="mr-2 h-4 w-4" /> {downloading === "pdf" ? t("Membuat...") : "PDF"}
               </Button>
             </div>
           </DialogFooter>
