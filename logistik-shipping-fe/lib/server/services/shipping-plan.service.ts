@@ -1,3 +1,4 @@
+import { activeLabel, auditCreate, auditUpdate, type AuditField } from "@/lib/server/audit";
 import {
   HttpError,
   currentActor,
@@ -11,6 +12,7 @@ import {
 import { freightCost, roadDistanceKm } from "@/lib/freight";
 import { mstLocationRepository, type MstLocationInput } from "@/lib/server/repositories/mst-location.repository";
 import { mstCarrierRepository, mstDriverRepository } from "@/lib/server/repositories/mst-logistics.repository";
+import { shippingAudit } from "@/lib/server/audit-shipping";
 import { shippingIncidentRepository } from "@/lib/server/repositories/shipping-incident.repository";
 import {
   shippingPlanRepository,
@@ -54,20 +56,38 @@ function mapDuplicate(err: unknown): never {
   throw err;
 }
 
+const LOCATION_FIELDS: AuditField[] = [
+  { key: "code", label: "Kode" },
+  { key: "name", label: "Nama" },
+  { key: "type", label: "Tipe" },
+  { key: "address", label: "Alamat" },
+  { key: "city", label: "Kota" },
+  { key: "province", label: "Provinsi" },
+  { key: "contactName", label: "Kontak" },
+  { key: "contactPhone", label: "Telepon" },
+  { key: "latitude", label: "Latitude" },
+  { key: "longitude", label: "Longitude" },
+  { key: "isActive", label: "Status", format: activeLabel },
+];
+
 export const mstLocationService = {
   getAll: () => mstLocationRepository.getAll(),
   getLov: () => mstLocationRepository.getLov(),
 
   async create(body: Record<string, unknown>) {
     const by = await currentActor();
-    return mstLocationRepository.create({ ...locationInput(body), createdBy: by }).catch(mapDuplicate);
+    const row = await mstLocationRepository.create({ ...locationInput(body), createdBy: by }).catch(mapDuplicate);
+    await auditCreate({ module: "Master Location", entityType: "Location", ref: row.name, detail: `${row.type === "WAREHOUSE" ? "gudang" : "customer"}${row.city ? `, ${row.city}` : ""}` });
+    return row;
   },
 
   async update(newId: string, body: Record<string, unknown>) {
     requireGuid(newId, "location id");
     const by = await currentActor();
+    const before = await mstLocationRepository.getByNewId(newId);
     const row = await mstLocationRepository.update(newId, { ...locationInput(body), updatedBy: by }).catch(mapDuplicate);
-    if (!row) throw new HttpError(404, "Location not found.");
+    if (!row || !before) throw new HttpError(404, "Location not found.");
+    await auditUpdate({ module: "Master Location", entityType: "Location", ref: before.name, before, after: row, fields: LOCATION_FIELDS });
     return row;
   },
 };
@@ -302,7 +322,9 @@ export const shippingPlanService = {
   async create(body: Record<string, unknown>) {
     const by = await currentActor();
     const newId = await shippingPlanRepository.create(headerInput(body), by).catch(mapReference);
-    return getPlanOrThrow(newId);
+    const created = await getPlanOrThrow(newId);
+    await shippingAudit.created(created);
+    return created;
   },
 
   async updateHeader(newId: string, body: Record<string, unknown>) {
@@ -310,7 +332,9 @@ export const shippingPlanService = {
     if (!EDITABLE.includes(plan.status)) throw new HttpError(409, `A plan with status ${plan.status} cannot be edited.`);
     const by = await currentActor();
     await shippingPlanRepository.updateHeader(plan.newId, headerInput(body), by).catch(mapReference);
-    return getPlanOrThrow(plan.newId);
+    const updated = await getPlanOrThrow(plan.newId);
+    await shippingAudit.header(plan, updated);
+    return updated;
   },
 
   async saveLoad(newId: string, body: Record<string, unknown>) {
@@ -334,6 +358,7 @@ export const shippingPlanService = {
     if (qtyByItem.size === 0) throw new HttpError(400, "Add at least one item.");
 
     const by = await currentActor();
+    const itemsBefore = await shippingPlanRepository.getItems(plan.newId);
     await shippingPlanRepository
       .saveLoad(
         plan.newId,
@@ -342,7 +367,9 @@ export const shippingPlanService = {
         plan.status,
       )
       .catch(mapReference);
-    return this.getDetail(plan.newId);
+    const detail = await this.getDetail(plan.newId);
+    await shippingAudit.load(plan, itemsBefore, detail, detail.items);
+    return detail;
   },
 
   async changeStatus(newId: string, body: Record<string, unknown>) {
@@ -355,7 +382,9 @@ export const shippingPlanService = {
     const by = await currentActor();
     const ok = await shippingPlanRepository.changeStatus(plan.newId, plan.status, to, optString(body.note), by);
     if (!ok) throw new HttpError(409, "The plan status was changed by someone else. Reload and try again.");
-    return this.getDetail(plan.newId);
+    const detail = await this.getDetail(plan.newId);
+    await shippingAudit.statusChanged(plan, detail, action, optString(body.note));
+    return detail;
   },
 
   /** Cost estimate for a plan; `overrides` lets the booking form preview a manual distance or extra fees. */
@@ -413,7 +442,9 @@ export const shippingPlanService = {
       `${plan.status === "BOOKED" ? "Booking diubah" : "Booking dibuat"}: ${carrier.name}, ${driver.name}, ${plateNo}, total Rp ${est.totalCost?.toLocaleString("id-ID")}`,
     );
     if (!ok) throw new HttpError(409, "The plan status was changed by someone else. Reload and try again.");
-    return this.getDetail(plan.newId);
+    const detail = await this.getDetail(plan.newId);
+    await shippingAudit.booking(plan, detail);
+    return detail;
   },
 
   /** Issues the surat jalan number and sends the truck off. */
@@ -426,7 +457,9 @@ export const shippingPlanService = {
     const by = await currentActor();
     const noteNo = await shippingPlanRepository.dispatch(plan.newId, etaDate, graceDays, by);
     if (!noteNo) throw new HttpError(409, "The plan status was changed by someone else. Reload and try again.");
-    return this.getDetail(plan.newId);
+    const detail = await this.getDetail(plan.newId);
+    await shippingAudit.dispatched(detail);
+    return detail;
   },
 
   /** Changes the ETA or the grace days of a plan that is on its way. */
@@ -437,7 +470,9 @@ export const shippingPlanService = {
     const by = await currentActor();
     const ok = await shippingPlanRepository.updateEta(plan.newId, etaDate, graceDays, by);
     if (!ok) throw new HttpError(409, "The plan status was changed by someone else. Reload and try again.");
-    return this.getDetail(plan.newId);
+    const detail = await this.getDetail(plan.newId);
+    await shippingAudit.eta(plan, detail);
+    return detail;
   },
 
   /** DISPATCHED -> COMPLETED: the goods have arrived. */
@@ -449,6 +484,7 @@ export const shippingPlanService = {
     const by = await currentActor();
     const ok = await shippingPlanRepository.receive(plan.newId, receivedBy, optString(body.notes), by);
     if (!ok) throw new HttpError(409, "The plan status was changed by someone else. Reload and try again.");
+    await shippingAudit.received(plan, receivedBy, optString(body.notes));
     return this.getDetail(plan.newId);
   },
 
@@ -470,6 +506,7 @@ export const shippingPlanService = {
     const by = await currentActor();
     const ok = await shippingPlanRepository.changeStatus(plan.newId, "BOOKED", "PICKING", "Picking & packing dimulai", by);
     if (!ok) throw new HttpError(409, "The plan status was changed by someone else. Reload and try again.");
+    await shippingAudit.pickingStarted(plan);
     return this.getDetail(plan.newId);
   },
 
@@ -498,7 +535,9 @@ export const shippingPlanService = {
       `Picking & packing selesai: ${pickedUnits} dari ${plannedUnits} karton${notes ? ` (${notes})` : ""}`,
     );
     if (!ok) throw new HttpError(409, "The plan status was changed by someone else. Reload and try again.");
-    return this.getDetail(plan.newId);
+    const detail = await this.getDetail(plan.newId);
+    await shippingAudit.picking(plan, items, detail, detail.items);
+    return detail;
   },
 
   /** Records the loading checklist, seal, weighbridge readings and the quantities really loaded (plan stays in LOADING). */
@@ -541,6 +580,8 @@ export const shippingPlanService = {
       by,
     );
     if (!ok) throw new HttpError(409, "The plan status was changed by someone else. Reload and try again.");
-    return this.getDetail(plan.newId);
+    const detail = await this.getDetail(plan.newId);
+    await shippingAudit.loading(plan, items, detail, detail.items);
+    return detail;
   },
 };

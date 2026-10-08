@@ -64,12 +64,12 @@ Di sisi server alurnya selalu sama: `route.ts` menerima request, `services` beri
 
 Butuh PostgreSQL 13 atau lebih baru (skrip memakai `gen_random_uuid()` dan `trim_scale()`).
 
-Skrip SQL ada di folder `database/` dan harus dijalankan berurutan (001 sampai 010). Semuanya aman diulang. Cara paling mudah adalah lewat perintah migrasi, yang membaca koneksi dari `.env.local` (lihat di bawah) dan menjalankan semua file dalam urutan yang benar:
+Skrip SQL ada di folder `database/` dan harus dijalankan berurutan (001 sampai 011). Semuanya aman diulang. Cara paling mudah adalah lewat perintah migrasi, yang membaca koneksi dari `.env.local` (lihat di bawah) dan menjalankan semua file dalam urutan yang benar:
 
 ```bash
 cd logistik-shipping-fe
 pnpm db:migrate         # semua file
-pnpm db:migrate 10       # hanya dari file 010 ke atas
+pnpm db:migrate 11       # hanya dari file 011 ke atas
 ```
 
 Tiap file dijalankan sebagai satu kesatuan: kalau ada yang gagal, file itu tidak diterapkan sama sekali, dan pesan errornya menyebut nomor barisnya. Perintah ini memakai database yang sama dengan aplikasi, jadi buat `.env.local` dulu.
@@ -124,6 +124,7 @@ Nama tabel dan kolom memakai snake_case. API mengubahnya jadi camelCase di `lib/
 | 005 | unique index username dan email (tanpa membedakan huruf besar-kecil), menu Settings > User |
 | 006 | data contoh: 33 kendaraan, 32 barang (cubstool), 39 lokasi (8 gudang, 31 customer) |
 | 007 | `mst_carrier`, `mst_driver`, kolom booking dan biaya di `shipping_plan`, tarif di kendaraan, koordinat di lokasi, status `BOOKED` dan `DISPATCHED`, menu Carrier dan Driver. Berisi juga data contoh: 33 carrier, 32 driver, tarif per jenis kendaraan, koordinat kota |
+| 011 | `core_audit_trail`: catatan audit trail semua layanan |
 | 010 | `shipping_incident_history`: riwayat kejadian per insiden |
 | 009 | `eta_date`, `grace_days`, data penerimaan di `shipping_plan`, status `COMPLETED`, tabel `shipping_incident`, menu Insiden & Klaim |
 | 008 | kolom picking dan loading di `shipping_plan` dan `shipping_plan_item` (jumlah di-pick/dimuat, checklist, segel, suhu, timbang), status `PICKING` dan `LOADING` |
@@ -160,6 +161,10 @@ Semua di bawah `/api/v1`. Format JSON, nama field camelCase.
 | `ShippingPlan/{id}/status` | `{ "action": "approve" }` atau `{ "action": "cancel", "note": "..." }` |
 | `ShippingPlan/{id}/estimate` | estimasi biaya kirim; opsional `?distanceKm=&loadingFee=&otherFee=` |
 | `ShippingPlan/{id}/booking` | `PUT` carrier, driver, nomor polisi, biaya tambahan (plan harus `APPROVED` atau `BOOKED`) |
+| `AuditTrail` | `GET` daftar audit trail, filter `from`, `to`, `q`, `module`, `activity`, `user`, `page` |
+| `AuditTrail/export` | `GET` semua aktivitas satu periode (maksimal 92 hari) untuk laporan PDF atau Excel; pengunduhan ikut dicatat |
+| `AuditTrail/filters` | `GET` daftar modul, aktivitas, dan pengguna untuk filter |
+| `Auth/logout` | `POST` mencatat logout |
 | `Dashboard?range=` | `GET` angka dashboard untuk 7, 30, 90, atau 365 hari terakhir |
 | `ShippingPlan/{id}/start-picking` | `POST`, `BOOKED` -> `PICKING` |
 | `ShippingPlan/{id}/picking` | `PUT` jumlah di-pick per barang, catatan, `complete` untuk lanjut ke `LOADING` |
@@ -229,6 +234,14 @@ Kalau ada masalah, staf menekan **Lapor Insiden** di plan itu. Jenisnya: terlamb
 Halaman `/dashboard` dibangun dari satu endpoint (`Dashboard?range=30`) yang lewat `dashboard.service` dan `dashboard.repository`, terpisah dari modul plan. Isinya: lima angka utama (plan, dalam perjalanan, biaya angkut, utilisasi muatan, bebas insiden) dengan perbandingan ke periode sebelumnya, tren per hari atau per minggu (bisa diganti antara jumlah plan, berat, dan biaya), status plan, daftar yang perlu tindakan, jadwal berangkat 7 hari ke depan, tujuan dan carrier teratas, utilisasi per jenis kendaraan, insiden per jenis, dan tabel plan terbaru. Periode dipilih di pojok kanan atas, data dimuat ulang tiap menit. Klik potongan donat atau batang tujuan dan carrier untuk menyaring tabel plan di bawahnya. Periode dihitung dari tanggal berangkat plan; pembatalan tidak dihitung di angka volume.
 
 Untuk mencoba dashboard dengan data yang ramai, ada skrip data contoh: `pnpm db:seed-demo` menambah sekitar 150 plan dan insiden selama 100 hari terakhir (nomor `SP-DEMO-xxxx`), dan `pnpm db:seed-demo --reset` membuangnya lalu membuat ulang. Skrip ini tidak ikut `db:migrate`, jadi jangan dijalankan di database produksi.
+
+### Audit trail
+
+Setiap perubahan lewat API ditulis ke `core_audit_trail` oleh layanan yang menanganinya: login berhasil dan gagal, logout, user, role dan anggotanya, menu dan hak akses, semua master (vehicle, cubstool, location, carrier, driver), seluruh siklus Shipping Plan (buat, ubah, simulasi muatan, approve atau batal, booking, picking, loading, dispatch, ETA, diterima, selesai otomatis), insiden dan klaim, serta pengunduhan laporan audit trail itu sendiri. Pelaku diambil dari token, bukan dari isi request. Password tidak pernah ikut dicatat.
+
+Catatannya spesifik. Contoh: `Mengubah Vehicle 'Box A': Nama dari 'Box A' menjadi 'Box A1'; Muatan maks (kg) dari '2000' menjadi '2500'`. Kalau disimpan tanpa perubahan apa pun, tidak ada yang dicatat. Penulisan audit tidak pernah menggagalkan aksi aslinya: kalau gagal menulis, hanya muncul di log server.
+
+Halaman **Audit Trail** menampilkan Nama (kolom pertama, dengan username dan role), Waktu lengkap dengan jam, Aktivitas, Modul, dan Catatan, dengan filter periode, pengguna, modul, aktivitas, dan pencarian. **Download Report** membuat laporan untuk rentang tanggal yang dipilih (maksimal 92 hari) sebagai PDF A4 lanskap atau Excel. PDF memuat judul, periode, waktu cetak, pencetak, jumlah aktivitas, tabel yang rapi, serta footer dengan nomor halaman di setiap halaman. Waktu memakai zona `Asia/Jakarta`; ganti lewat variabel `APP_TIME_ZONE` di `.env.local` (dan konstanta `TIME_ZONE` di halaman audit trail).
 
 ## Yang belum selesai
 

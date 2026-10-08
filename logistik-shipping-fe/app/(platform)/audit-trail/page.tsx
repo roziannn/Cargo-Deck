@@ -1,286 +1,246 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { format, differenceInCalendarDays } from "date-fns";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, Download, FileSpreadsheet, FileText, Search } from "lucide-react";
+import { Toaster, toast } from "react-hot-toast";
 
-import { Search, ChevronLeft, ChevronRight, CalendarIcon, Download } from "lucide-react";
-
-import { getStoredAuthToken, getStoredAuthUser } from "@/lib/api/auth";
-import { listCoreAuditTrail } from "@/lib/api/core-audit-trail";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { getStoredAuthToken } from "@/lib/api/auth";
+import {
+  auditActivityLabel,
+  exportAuditTrail,
+  formatAuditDate,
+  formatAuditTime,
+  getAuditFacets,
+  listAuditTrail,
+  timeZoneLabel,
+  type AuditFacets,
+  type AuditPage,
+} from "@/lib/api/audit-trail";
+import { downloadAuditPdf, downloadAuditXlsx } from "@/lib/audit-report";
+import { cn } from "@/lib/utils";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+const TIME_ZONE = "Asia/Jakarta"; // keep in line with APP_TIME_ZONE on the server
+const PAGE_SIZE = 15;
+const MAX_REPORT_DAYS = 92;
+const DAY_MS = 86_400_000;
 
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { DateFormat } from "@/utils/date-format";
+const isoDay = (offset = 0) => new Date(Date.now() + offset * DAY_MS).toLocaleDateString("en-CA", { timeZone: TIME_ZONE });
+const daysBetween = (from: string, to: string) => (Date.parse(to) - Date.parse(from)) / DAY_MS + 1;
 
-import { Calendar } from "@/components/ui/calendar";
-import { cn } from "@/utils/utils";
-
-type AuditTrailRow = {
-  key: string;
-  id: number;
-  user: string;
-  jobTitle: string;
-  activity: string;
-  note: string;
-  dateTime: string;
+const ACTIVITY_STYLE: Record<string, string> = {
+  LOGIN_SUCCESS: "border-emerald-200 bg-emerald-100 text-emerald-700",
+  LOGIN_FAILED: "border-red-200 bg-red-100 text-red-700",
+  LOGOUT: "border-slate-200 bg-slate-100 text-slate-600",
+  CREATE: "border-blue-200 bg-blue-100 text-blue-700",
+  UPDATE: "border-amber-200 bg-amber-100 text-amber-700",
+  STATUS_CHANGE: "border-violet-200 bg-violet-100 text-violet-700",
+  ACCESS_CHANGE: "border-orange-200 bg-orange-100 text-orange-700",
+  PASSWORD_CHANGE: "border-rose-200 bg-rose-100 text-rose-700",
+  DOWNLOAD: "border-teal-200 bg-teal-100 text-teal-700",
 };
 
 export default function AuditTrailPage() {
-  const [data, setData] = useState<AuditTrailRow[]>([]);
+  const [from, setFrom] = useState(() => isoDay(-6));
+  const [to, setTo] = useState(() => isoDay());
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [module, setModule] = useState("");
+  const [activity, setActivity] = useState("");
+  const [user, setUser] = useState("");
+  const [page, setPage] = useState(1);
+
+  const [data, setData] = useState<AuditPage | null>(null);
+  const [facets, setFacets] = useState<AuditFacets>({ modules: [], activities: [], users: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // ======================
-  // Table state
-  // ======================
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const rowsPerPage = 8;
-
-  // ======================
-  // Download dialog state
-  // ======================
   const [openDownload, setOpenDownload] = useState(false);
-  const [startDate, setStartDate] = useState<Date | undefined>();
-  const [endDate, setEndDate] = useState<Date | undefined>();
-  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [dlFrom, setDlFrom] = useState("");
+  const [dlTo, setDlTo] = useState("");
+  const [dlUseFilters, setDlUseFilters] = useState(true);
+  const [downloading, setDownloading] = useState<"pdf" | "xlsx" | null>(null);
 
   useEffect(() => {
-    async function loadAuditTrail() {
-      setIsLoading(true);
-      setLoadError(null);
+    const id = window.setTimeout(() => setDebouncedSearch(search.trim()), 350);
+    return () => window.clearTimeout(id);
+  }, [search]);
 
-      try {
-        const token = getStoredAuthToken() ?? undefined;
-        const currentUser = getStoredAuthUser();
-        const compcode = currentUser?.site?.trim();
-
-        if (!compcode) {
-          throw new Error("Compcode tidak ditemukan. Silakan logout lalu login kembali.");
-        }
-
-        const rows = await listCoreAuditTrail(compcode, token);
-        setData(rows);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Gagal mengambil data audit trail.";
-        setLoadError(message);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    void loadAuditTrail();
+  useEffect(() => {
+    getAuditFacets(getStoredAuthToken() ?? undefined)
+      .then(setFacets)
+      .catch(() => undefined);
   }, []);
 
-  // ======================
-  // Filter
-  // ======================
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-
-    return data.filter((row) => row.user.toLowerCase().includes(q) || row.activity.toLowerCase().includes(q) || row.note.toLowerCase().includes(q));
-  }, [data, search]);
-
-  // ======================
-  // Pagination
-  // ======================
-  const totalPages = Math.ceil(filtered.length / rowsPerPage);
-  const startIndex = (page - 1) * rowsPerPage;
-  const paginated = filtered.slice(startIndex, startIndex + rowsPerPage);
-  const totalEntries = filtered.length;
-  const fromEntry = totalEntries === 0 ? 0 : Math.min(startIndex + 1, totalEntries);
-  const toEntry = totalEntries === 0 ? 0 : Math.min(startIndex + rowsPerPage, totalEntries);
-
-  // ======================
-  // Download handler
-  // ======================
-  function handleDownload() {
-    if (!startDate || !endDate) {
-      setDownloadError("Please select start date and end date");
+  const load = useCallback(async () => {
+    if (from > to) {
+      setLoadError("Tanggal mulai tidak boleh setelah tanggal akhir.");
       return;
     }
-
-    const diff = differenceInCalendarDays(endDate, startDate);
-
-    if (diff < 0) {
-      setDownloadError("End date must be after start date");
-      return;
+    setIsLoading(true);
+    try {
+      setData(await listAuditTrail({ from, to, q: debouncedSearch, module, activity, user, page, pageSize: PAGE_SIZE }, getStoredAuthToken() ?? undefined));
+      setLoadError(null);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Gagal mengambil audit trail.");
+    } finally {
+      setIsLoading(false);
     }
+  }, [from, to, debouncedSearch, module, activity, user, page]);
 
-    if (diff > 30) {
-      setDownloadError("Maximum range is 30 days");
-      return;
+  useEffect(() => {
+    const id = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(id);
+  }, [load]);
+
+  const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / PAGE_SIZE));
+  const hasFilter = module !== "" || activity !== "" || user !== "" || search !== "";
+  const withFirstPage = <T,>(set: (value: T) => void) => (value: T) => {
+    set(value);
+    setPage(1);
+  };
+
+  const moduleOptions = useMemo(() => facets.modules.map((m) => ({ value: m, label: m })), [facets.modules]);
+  const activityOptions = useMemo(() => facets.activities.map((a) => ({ value: a, label: auditActivityLabel(a) })), [facets.activities]);
+  const userOptions = useMemo(() => facets.users.map((u) => ({ value: u.username, label: u.name ?? u.username, description: u.name ? u.username : undefined })), [facets.users]);
+
+  function openDownloadDialog() {
+    setDlFrom(from);
+    setDlTo(to);
+    setDlUseFilters(hasFilter);
+    setOpenDownload(true);
+  }
+
+  async function download(format: "pdf" | "xlsx") {
+    if (!dlFrom || !dlTo) return void toast.error("Pilih tanggal mulai dan tanggal akhir.");
+    if (dlFrom > dlTo) return void toast.error("Tanggal mulai tidak boleh setelah tanggal akhir.");
+    if (daysBetween(dlFrom, dlTo) > MAX_REPORT_DAYS) return void toast.error(`Rentang tanggal maksimal ${MAX_REPORT_DAYS} hari.`);
+
+    setDownloading(format);
+    try {
+      const report = await exportAuditTrail(
+        { from: dlFrom, to: dlTo, format, ...(dlUseFilters ? { q: debouncedSearch, module, activity, user } : {}) },
+        getStoredAuthToken() ?? undefined,
+      );
+      if (format === "pdf") await downloadAuditPdf(report);
+      else await downloadAuditXlsx(report);
+      toast.success(`Laporan diunduh (${report.rows.length} aktivitas).`);
+      setOpenDownload(false);
+      void load(); // the download itself is now in the trail
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal membuat laporan.");
+    } finally {
+      setDownloading(null);
     }
-
-    setDownloadError(null);
-
-    const from = format(startDate, "yyyy-MM-dd");
-    const to = format(endDate, "yyyy-MM-dd");
-
-    // trigger download
-    window.location.href = `/api/audit-trail/download?from=${from}&to=${to}`;
-
-    // ======================
-    // 👉 auto close & reset
-    // ======================
-    setOpenDownload(false);
-    setStartDate(undefined);
-    setEndDate(undefined);
-    setDownloadError(null);
   }
 
   return (
-    <div className="p-6 space-y-6 min-h-screen">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Audit Trail
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Manage audit trail for manufacturing process control and monitoring.
-        </p>
-      </div>
-      {loadError && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {loadError}
+    <div className="min-h-screen space-y-6 p-6 dark:bg-zinc-900">
+      <Toaster position="top-center" />
+
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-2">
+          <h1 className="text-2xl font-semibold tracking-tight">Audit Trail</h1>
+          <p className="text-sm text-muted-foreground">Catatan siapa melakukan apa dan kapan di seluruh aplikasi. Perubahan data ditulis spesifik, dan simpan tanpa perubahan tidak dicatat.</p>
         </div>
-      )}
-      {/* ================= Header ================= */}
-      <div className="flex items-center justify-between">
-        <div className="relative w-80">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
+        <Button onClick={openDownloadDialog}>
+          <Download className="mr-2 h-4 w-4" /> Download Report
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Dari tanggal</Label>
+          <Input type="date" value={from} max={to} onChange={(e) => withFirstPage(setFrom)(e.target.value)} className="w-40" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Sampai tanggal</Label>
+          <Input type="date" value={to} min={from} onChange={(e) => withFirstPage(setTo)(e.target.value)} className="w-40" />
+        </div>
+        <div className="w-48 space-y-1">
+          <Label className="text-xs text-muted-foreground">Pengguna</Label>
+          <Combobox options={userOptions} value={user} onChange={withFirstPage(setUser)} placeholder="Semua pengguna" searchPlaceholder="Cari pengguna..." clearable />
+        </div>
+        <div className="w-44 space-y-1">
+          <Label className="text-xs text-muted-foreground">Modul</Label>
+          <Combobox options={moduleOptions} value={module} onChange={withFirstPage(setModule)} placeholder="Semua modul" searchPlaceholder="Cari modul..." clearable />
+        </div>
+        <div className="w-44 space-y-1">
+          <Label className="text-xs text-muted-foreground">Aktivitas</Label>
+          <Combobox options={activityOptions} value={activity} onChange={withFirstPage(setActivity)} placeholder="Semua aktivitas" searchPlaceholder="Cari aktivitas..." clearable />
+        </div>
+        <div className="relative w-64">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input value={search} onChange={(e) => withFirstPage(setSearch)(e.target.value)} placeholder="Cari nama atau catatan..." className="px-9" />
+        </div>
+        {hasFilter && (
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setModule("");
+              setActivity("");
+              setUser("");
+              setSearch("");
               setPage(1);
             }}
-            placeholder="Search audit trail..."
-            className="w-full rounded-md px-9"
-          />
-        </div>
-
-        {/* Download dialog */}
-        <Dialog open={openDownload} onOpenChange={setOpenDownload}>
-          <DialogTrigger asChild>
-            <Button variant="outline">
-              <Download className="mr-2 h-4 w-4" />
-              Download
-            </Button>
-          </DialogTrigger>
-
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Download Audit Trail Report</DialogTitle>
-              <DialogDescription>Select a date range to download the audit trail report. Maximum range is 30 days.</DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4 py-2">
-              {/* Start date */}
-              <div className="space-y-1">
-                <label className="text-sm font-medium">Start Date</label>
-
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !startDate && "text-muted-foreground")}>
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {startDate ? format(startDate, "PPP") : "Select start date"}
-                    </Button>
-                  </PopoverTrigger>
-
-                  <PopoverContent className="p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={startDate}
-                      onSelect={(d) => {
-                        setStartDate(d);
-                        setDownloadError(null);
-                      }}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              {/* End date */}
-              <div className="space-y-1">
-                <label className="text-sm font-medium">End Date</label>
-
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !endDate && "text-muted-foreground")}>
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {endDate ? format(endDate, "PPP") : "Select end date"}
-                    </Button>
-                  </PopoverTrigger>
-
-                  <PopoverContent className="p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={endDate}
-                      onSelect={(d) => {
-                        setEndDate(d);
-                        setDownloadError(null);
-                      }}
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              {downloadError && <p className="text-sm text-destructive">{downloadError}</p>}
-            </div>
-
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setOpenDownload(false)}>
-                Cancel
-              </Button>
-
-              <Button onClick={handleDownload}>
-                <Download className="mr-2 h-4 w-4" />
-                Download
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          >
+            Reset
+          </Button>
+        )}
       </div>
+
+      {loadError && <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{loadError}</div>}
 
       <div className="overflow-hidden rounded-lg border bg-background/40">
         <Table containerClassName="rounded-none border-0 bg-transparent">
           <TableHeader>
             <TableRow>
-              <TableHead>User</TableHead>
-              <TableHead className="w-[220px]">Job Title</TableHead>
-              <TableHead>Activity</TableHead>
-              <TableHead>Note</TableHead>
-              <TableHead>Date Time</TableHead>
+              <TableHead className="w-56">Nama</TableHead>
+              <TableHead className="w-40">Waktu</TableHead>
+              <TableHead className="w-40">Aktivitas</TableHead>
+              <TableHead className="w-44">Modul</TableHead>
+              <TableHead>Catatan</TableHead>
             </TableRow>
           </TableHeader>
-
           <TableBody>
-            {paginated.map((row) => (
-              <TableRow key={row.key}>
-                <TableCell>{row.user}</TableCell>
-                <TableCell className="w-[220px] whitespace-normal break-words">{row.jobTitle}</TableCell>
-                <TableCell>{row.activity}</TableCell>
-                <TableCell className="whitespace-normal">{row.note}</TableCell>
-                <TableCell>{row.dateTime ? DateFormat(row.dateTime) : "-"}</TableCell>
+            {(data?.rows ?? []).map((row) => (
+              <TableRow key={row.id} className="align-top">
+                <TableCell>
+                  <div className="font-medium">{row.actorName ?? row.username ?? "Tidak diketahui"}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {row.username && row.username !== row.actorName ? row.username : null}
+                    {row.actorRole ? `${row.username && row.username !== row.actorName ? " · " : ""}${row.actorRole}` : null}
+                  </div>
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
+                  <div>{formatAuditDate(row.createdDate, TIME_ZONE)}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {formatAuditTime(row.createdDate, TIME_ZONE)} {timeZoneLabel(TIME_ZONE)}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge className={cn("border font-medium hover:bg-inherit", ACTIVITY_STYLE[row.activity] ?? "border-slate-200 bg-slate-100 text-slate-600")}>{auditActivityLabel(row.activity)}</Badge>
+                </TableCell>
+                <TableCell>{row.module}</TableCell>
+                <TableCell className="whitespace-normal leading-relaxed">{row.note}</TableCell>
               </TableRow>
             ))}
-
-            {!isLoading && paginated.length === 0 && (
+            {!isLoading && (data?.rows.length ?? 0) === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
-                  No data found
+                <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                  Tidak ada aktivitas pada periode dan filter ini
                 </TableCell>
               </TableRow>
             )}
-            {isLoading && (
+            {isLoading && !data && (
               <TableRow>
-                <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
+                <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
                   Loading data...
                 </TableCell>
               </TableRow>
@@ -289,25 +249,84 @@ export default function AuditTrailPage() {
         </Table>
 
         <div className="flex flex-col gap-2 border-t px-3 py-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <span>
-            Showing {fromEntry} to {toEntry} of {totalEntries} entries
-          </span>
-
+          <span>{data ? `${data.total} aktivitas` : ""}</span>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="icon" className="h-8 w-8" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-
             <span className="min-w-24 text-center text-foreground">
-              Page {page} of {totalPages || 1}
+              Page {page} of {totalPages}
             </span>
-
-            <Button variant="outline" size="icon" className="h-8 w-8" disabled={page === totalPages || totalPages === 0} onClick={() => setPage((p) => p + 1)}>
+            <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
       </div>
+
+      <Dialog open={openDownload} onOpenChange={setOpenDownload}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Download Report Audit Trail</DialogTitle>
+            <DialogDescription>
+              Pilih periode laporan, maksimal {MAX_REPORT_DAYS} hari. Laporan memuat waktu cetak, siapa yang mencetak, dan nomor halaman.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Dari tanggal</Label>
+                <Input type="date" value={dlFrom} max={dlTo || undefined} onChange={(e) => setDlFrom(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Sampai tanggal</Label>
+                <Input type="date" value={dlTo} min={dlFrom || undefined} onChange={(e) => setDlTo(e.target.value)} />
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                ["7 hari", 6],
+                ["30 hari", 29],
+                ["90 hari", 89],
+              ].map(([label, back]) => (
+                <Button
+                  key={label}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setDlFrom(isoDay(-(back as number)));
+                    setDlTo(isoDay());
+                  }}
+                >
+                  {label} terakhir
+                </Button>
+              ))}
+            </div>
+            {hasFilter && (
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={dlUseFilters} onChange={(e) => setDlUseFilters(e.target.checked)} className="h-4 w-4" />
+                Terapkan filter yang sedang aktif (pengguna, modul, aktivitas, pencarian)
+              </label>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button variant="outline" onClick={() => setOpenDownload(false)} disabled={downloading !== null}>
+              Batal
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => void download("xlsx")} disabled={downloading !== null}>
+                <FileSpreadsheet className="mr-2 h-4 w-4" /> {downloading === "xlsx" ? "Membuat..." : "Excel"}
+              </Button>
+              <Button onClick={() => void download("pdf")} disabled={downloading !== null}>
+                <FileText className="mr-2 h-4 w-4" /> {downloading === "pdf" ? "Membuat..." : "PDF"}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

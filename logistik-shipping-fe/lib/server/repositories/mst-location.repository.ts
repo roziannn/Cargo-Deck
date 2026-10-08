@@ -46,6 +46,11 @@ export const mstLocationRepository = {
       "SELECT new_id AS value, code || ' - ' || name AS label, type FROM mst_location WHERE is_active = true ORDER BY name",
     ),
 
+  async getByNewId(newId: string) {
+    const rows = await query<MstLocationRow>(`SELECT ${COLUMNS} FROM mst_location WHERE new_id = @newId`, { newId });
+    return rows[0] ?? null;
+  },
+
   async create(input: MstLocationInput & { createdBy: string }) {
     const rows = await query<MstLocationRow>(
       `INSERT INTO mst_location (code, name, type, address, city, province, contact_name, contact_phone, latitude, longitude, is_active, created_by)

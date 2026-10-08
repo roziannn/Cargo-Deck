@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { signToken } from "@/lib/server/auth";
+import { writeAudit } from "@/lib/server/audit";
 import { query } from "@/lib/server/db";
 import { HttpError, handle, readJson, requireString } from "@/lib/server/http";
 
@@ -22,9 +23,19 @@ export const POST = (req: Request) =>
         { username, password },
       );
       const user = rows[0];
-      if (!user) throw new HttpError(401, "Username atau password salah.");
+      if (!user) {
+        // the typed username is not trusted as an identity: it is kept in the note only
+        await writeAudit({
+          module: "Auth",
+          action: "LOGIN_FAILED",
+          actor: { username: null, name: null },
+          note: `Gagal login ke aplikasi dengan username '${username.slice(0, 100)}': username atau password salah`,
+        });
+        throw new HttpError(401, "Username atau password salah.");
+      }
 
       const profile = { username: user.username, email: user.email, name: user.name, site: site || user.site || "" };
+      await writeAudit({ module: "Auth", action: "LOGIN_SUCCESS", actor: { username: user.username, name: user.name, email: user.email }, note: "Berhasil login ke aplikasi" });
       return NextResponse.json({ token: signToken(profile), user: profile });
     },
     { isPublic: true },

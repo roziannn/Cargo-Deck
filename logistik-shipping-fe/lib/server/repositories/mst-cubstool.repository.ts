@@ -39,6 +39,11 @@ export const mstCubstoolRepository = {
   getLov: () =>
     query<{ value: string; label: string; weight: string | null }>("SELECT new_id AS value, name AS label, weight FROM mst_cubstool WHERE is_active = true ORDER BY name"),
 
+  async getByNewId(newId: string) {
+    const rows = await query<MstCubstoolRow>(`SELECT ${COLUMNS} FROM mst_cubstool WHERE new_id = @newId`, { newId });
+    return rows[0] ?? null;
+  },
+
   async create(input: MstCubstoolInput & { createdBy: string }) {
     const rows = await query<MstCubstoolRow>(
       `INSERT INTO mst_cubstool (name, item_code, length, width, height, weight, color, is_active, created_by)
