@@ -64,12 +64,12 @@ Di sisi server alurnya selalu sama: `route.ts` menerima request, `services` beri
 
 Butuh PostgreSQL 13 atau lebih baru (skrip memakai `gen_random_uuid()` dan `trim_scale()`).
 
-Skrip SQL ada di folder `database/` dan harus dijalankan berurutan (001 sampai 011). Semuanya aman diulang. Cara paling mudah adalah lewat perintah migrasi, yang membaca koneksi dari `.env.local` (lihat di bawah) dan menjalankan semua file dalam urutan yang benar:
+Skrip SQL ada di folder `database/` dan harus dijalankan berurutan (001 sampai 012). Semuanya aman diulang. Cara paling mudah adalah lewat perintah migrasi, yang membaca koneksi dari `.env.local` (lihat di bawah) dan menjalankan semua file dalam urutan yang benar:
 
 ```bash
 cd logistik-shipping-fe
 pnpm db:migrate         # semua file
-pnpm db:migrate 11       # hanya dari file 011 ke atas
+pnpm db:migrate 12       # hanya dari file 012 ke atas
 ```
 
 Tiap file dijalankan sebagai satu kesatuan: kalau ada yang gagal, file itu tidak diterapkan sama sekali, dan pesan errornya menyebut nomor barisnya. Perintah ini memakai database yang sama dengan aplikasi, jadi buat `.env.local` dulu.
@@ -124,6 +124,7 @@ Nama tabel dan kolom memakai snake_case. API mengubahnya jadi camelCase di `lib/
 | 005 | unique index username dan email (tanpa membedakan huruf besar-kecil), menu Settings > User |
 | 006 | data contoh: 33 kendaraan, 32 barang (cubstool), 39 lokasi (8 gudang, 31 customer) |
 | 007 | `mst_carrier`, `mst_driver`, kolom booking dan biaya di `shipping_plan`, tarif di kendaraan, koordinat di lokasi, status `BOOKED` dan `DISPATCHED`, menu Carrier dan Driver. Berisi juga data contoh: 33 carrier, 32 driver, tarif per jenis kendaraan, koordinat kota |
+| 012 | menghapus menu lama Transaction/Approval dan Verification beserta aksesnya |
 | 011 | `core_audit_trail`: catatan audit trail semua layanan |
 | 010 | `shipping_incident_history`: riwayat kejadian per insiden |
 | 009 | `eta_date`, `grace_days`, data penerimaan di `shipping_plan`, status `COMPLETED`, tabel `shipping_incident`, menu Insiden & Klaim |
@@ -141,7 +142,17 @@ User yang bisa login ada di tabel `core_user` dan dikelola dari Settings > User:
 
 Email user dipakai sebagai `user_principal_name` di `core_role_claim`, jadi saat user ditambahkan ke sebuah role dari halaman Role, yang dicari adalah isi `core_user`. Kalau email seorang user diubah, keanggotaan rolenya ikut dipindahkan.
 
-Menu di sidebar tidak tertulis di kode. Menu diambil dari tabel `core_menu`, difilter berdasarkan role milik user (lewat `core_role_claim` dan `core_role_menu`). Role, menu, dan akses per role diatur dari halaman Settings. Menu baru otomatis tidak terlihat oleh siapa pun sampai diberi akses ke sebuah role.
+Menu di sidebar tidak tertulis di kode. Menu diambil dari tabel `core_menu`, difilter berdasarkan role milik user (lewat `core_role_claim` dan `core_role_menu`). Role, menu, dan akses per role diatur dari halaman Settings > Role (centang menu per role). Menu baru otomatis tidak terlihat oleh siapa pun sampai diberi akses ke sebuah role.
+
+Daftar menu itu juga yang dipakai untuk **menjaga akses**, bukan hanya mengisi sidebar. File `proxy.ts` (middleware Next.js 16) berjalan sebelum setiap halaman dan setiap panggilan API:
+
+- Tanpa login yang valid, halaman dialihkan ke `/login` (dengan `?next=`) dan API menjawab 401. Untuk menjaga halaman, token login juga disimpan sebagai cookie `cd_session` (httpOnly) selain yang dipakai API.
+- Dengan login tapi tanpa akses ke menunya, halaman dialihkan ke `/forbidden` dan API menjawab 403. Halaman milik sebuah menu mencakup semua di bawah path-nya; simulasi muatan dan surat jalan ikut menu Shipping Plan.
+- API dipetakan ke menu pemiliknya (aturannya di `lib/server/permissions.ts`). Beberapa data hanya boleh dibaca oleh menu lain yang memang membutuhkannya, misalnya simulasi muatan membaca kendaraan dan produk, dan form insiden membaca daftar plan. Lookup dropdown, menu sidebar sendiri, dan endpoint `Auth/*` cukup dengan login. API yang belum dipetakan ditolak.
+- Role bernama `Administrator` boleh membuka semuanya, supaya sistem tidak bisa terkunci.
+- Saat login, server mengirim daftar menu yang boleh dibuka dan halaman awal (menu pertama). `Auth/me` memberi daftar yang terbaru. Perubahan centang di Settings > Role berlaku langsung (cache akses 15 detik dibersihkan saat ada perubahan).
+
+Akses saat ini berlaku per menu. Centang tombol (function) per menu sudah tersimpan, tetapi belum dipakai untuk membatasi aksi tertentu seperti approve.
 
 ## API
 
@@ -245,16 +256,16 @@ Halaman **Audit Trail** menampilkan Nama (kolom pertama, dengan username dan rol
 
 ## Yang belum selesai
 
-Beberapa halaman masih memanggil API dari backend lama (.NET) yang sudah tidak dipakai, jadi belum berfungsi: Audit Trail, Transaction/Approval, serta data yang dibutuhkan modul validasi (produk, product step, requirement category, validation form) dan notifikasi di lonceng atas. Endpoint-nya perlu dibuat ulang di `app/api/v1` dengan pola yang sama seperti modul yang sudah jadi. Dashboard dan Verification/Ongoing Process saat ini masih halaman statis atau placeholder.
+Halaman Transaction/Approval dan Verification yang lama sudah dihapus (kodenya dan menunya lewat migrasi 012). Yang masih memanggil backend lama (.NET) dan belum berfungsi adalah notifikasi di lonceng atas, dan halaman Settings > Account masih berisi data statis. Endpoint-nya perlu dibuat ulang di `app/api/v1` dengan pola yang sama seperti modul yang sudah jadi.
 
 Untuk alur pengirimannya sendiri, rencana tahap berikutnya:
 
 1. Bukti terima berupa foto atau tanda tangan, dan tracking GPS kalau nanti ada integrasinya.
 2. Laporan (on-time, utilisasi muatan, biaya per kg, nilai klaim per carrier).
 
-Approval plan sekarang belum dibatasi per role, siapa pun yang login bisa menyetujui.
+Approval plan belum punya hak akses tersendiri: siapa pun yang boleh membuka menu Shipping Plan bisa menyetujui.
 
-Satu hal kecil di sisi tooling: `npx tsc --noEmit` masih melaporkan dua error tipe lama, di `components/status-badge.tsx` dan `verification/ongoing-process/page.tsx` (varian badge `warning` dan `info` yang tidak ada di komponen Badge). Belum dibereskan.
+`npx tsc --noEmit` bersih.
 
 ## Lisensi
 

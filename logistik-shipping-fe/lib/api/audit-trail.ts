@@ -15,7 +15,11 @@ export const AUDIT_ACTIVITY_LABEL: Record<AuditActivity, string> = {
   DOWNLOAD: "Download Report",
 };
 
-export const auditActivityLabel = (activity: string) => AUDIT_ACTIVITY_LABEL[activity as AuditActivity] ?? activity;
+/** `t` translates the label; pass it from components (and the report generator) so the label follows the chosen language. */
+export const auditActivityLabel = (activity: string, t?: (text: string) => string) => {
+  const label = AUDIT_ACTIVITY_LABEL[activity as AuditActivity];
+  return label ? (t ? t(label) : label) : activity;
+};
 
 export type AuditChange = { field: string; label: string; from: string; to: string };
 

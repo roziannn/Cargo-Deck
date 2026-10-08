@@ -16,6 +16,8 @@ import { getStoredAuthToken } from "@/lib/api/auth";
 import { getDashboard, type DashboardAlert, type DashboardData, type DashboardPlan, type DashboardRange } from "@/lib/api/dashboard";
 import { INCIDENT_TYPE_LABEL, type IncidentType } from "@/lib/api/shipping-incident";
 import { formatPlanDate, formatRupiah, type ShippingPlanStatus } from "@/lib/api/shipping-plan";
+import { getCurrentLang, localeTag } from "@/lib/i18n/locale";
+import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 
 const RANGES: { value: DashboardRange; label: string }[] = [
@@ -32,30 +34,32 @@ const METRICS: { key: Metric; label: string; series: string }[] = [
   { key: "cost", label: "Biaya angkut", series: "Biaya angkut" },
 ];
 
-const nf = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 });
+const fmt = (n: number) => new Intl.NumberFormat(localeTag(), { maximumFractionDigits: 1 }).format(n);
 
-/** Rp 1,1 M / Rp 630 jt / Rp 85.000, short enough for a tile and an axis. */
+/** Rp 1,1 M / Rp 630 jt / Rp 85.000 (id) or Rp 1.1B / Rp 630M / Rp 85,000 (en), short enough for a tile and an axis. */
 function compactRupiah(n: number) {
-  if (n >= 1e9) return `Rp ${nf.format(n / 1e9)} M`;
-  if (n >= 1e6) return `Rp ${nf.format(Math.round(n / 1e5) / 10)} jt`;
+  const en = getCurrentLang() === "en";
+  if (n >= 1e9) return `Rp ${fmt(n / 1e9)}${en ? "B" : " M"}`;
+  if (n >= 1e6) return `Rp ${fmt(Math.round(n / 1e5) / 10)}${en ? "M" : " jt"}`;
   return formatRupiah(n);
 }
 
-const formatMetric = (metric: Metric, n: number) => (metric === "cost" ? compactRupiah(n) : metric === "weightKg" ? `${nf.format(n)} kg` : nf.format(n));
+const formatMetric = (metric: Metric, n: number) => (metric === "cost" ? compactRupiah(n) : metric === "weightKg" ? `${fmt(n)} kg` : fmt(n));
 
 function bucketLabel(bucket: string, unit: "day" | "week") {
   const [y, m, d] = bucket.split("-").map(Number);
-  const label = new Date(y, m - 1, d).toLocaleDateString("id-ID", { day: "2-digit", month: "short" });
-  return unit === "week" ? `Mgg ${label}` : label;
+  const label = new Date(y, m - 1, d).toLocaleDateString(localeTag(), { day: "2-digit", month: "short" });
+  return unit === "week" ? (getCurrentLang() === "en" ? `Wk ${label}` : `Mgg ${label}`) : label;
 }
 
 function Card({ title, subtitle, action, className, children }: { title: string; subtitle?: string; action?: React.ReactNode; className?: string; children: React.ReactNode }) {
+  const { t } = useI18n();
   return (
     <section className={cn("space-y-3 rounded-lg border bg-background/40 p-5", className)}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="text-base font-semibold">{title}</h2>
-          {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+          <h2 className="text-base font-semibold">{t(title)}</h2>
+          {subtitle && <p className="text-xs text-muted-foreground">{t(subtitle)}</p>}
         </div>
         {action}
       </div>
@@ -65,21 +69,22 @@ function Card({ title, subtitle, action, className, children }: { title: string;
 }
 
 function Tile({ label, value, change, changeLabel, goodWhenUp, hint }: { label: string; value: string; change?: number | null; changeLabel?: string; goodWhenUp?: boolean; hint?: string }) {
+  const { t } = useI18n();
   const up = (change ?? 0) >= 0;
   const tone = goodWhenUp === undefined || change === 0 ? "text-muted-foreground" : up === goodWhenUp ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
   return (
     <div className="rounded-lg border bg-background/40 p-4">
-      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t(label)}</div>
       <div className="mt-1 text-2xl font-semibold tracking-tight">{value}</div>
       <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
         {change !== undefined && change !== null ? (
           <span className={cn("inline-flex items-center gap-0.5 font-medium", tone)}>
             {up ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-            {Math.abs(change) >= 1000 ? ">999" : nf.format(Math.abs(change))}
-            {changeLabel ?? "%"}
+            {Math.abs(change) >= 1000 ? ">999" : fmt(Math.abs(change))}
+            {changeLabel ? t(changeLabel) : "%"}
           </span>
         ) : null}
-        {hint && <span>{hint}</span>}
+        {hint && <span>{t(hint)}</span>}
       </div>
     </div>
   );
@@ -91,11 +96,13 @@ const ALERT_STYLE: Record<DashboardAlert["level"], { icon: typeof Info; tone: st
   info: { icon: Info, tone: "text-blue-600 dark:text-blue-400", label: "Perlu tindakan" },
 };
 
-function EmptyChart({ children }: { children: React.ReactNode }) {
-  return <div className="flex h-40 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">{children}</div>;
+function EmptyChart({ children }: { children: string }) {
+  const { t } = useI18n();
+  return <div className="flex h-40 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">{t(children)}</div>;
 }
 
 export default function DashboardPage() {
+  const { t } = useI18n();
   const theme = useChartTheme();
   const [range, setRange] = useState<DashboardRange>(30);
   const [data, setData] = useState<DashboardData | null>(null);
@@ -119,14 +126,14 @@ export default function DashboardPage() {
       setUpdatedAt(new Date());
       setError(null);
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Gagal mengambil data dashboard.";
+      const message = e instanceof Error ? e.message : t("Gagal mengambil data dashboard.");
       if (silent) console.error(message);
       else toast.error(message);
       setError((current) => current ?? message);
     } finally {
       setIsRefreshing(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const first = window.setTimeout(() => void load(range), 0);
@@ -177,9 +184,9 @@ export default function DashboardPage() {
     fill: { type: "gradient", gradient: { shadeIntensity: 1, opacityFrom: 0.28, opacityTo: 0.02, stops: [0, 95] } },
     markers: { size: 0, hover: { size: 5 }, strokeColors: theme.surface, strokeWidth: 2 },
     ...(data.horizon > 0 && data.todayBucket
-      ? { annotations: { xaxis: [{ x: bucketLabel(data.todayBucket, data.bucket), borderColor: theme.muted, strokeDashArray: 4, label: { text: "Hari ini", orientation: "horizontal" as const, borderWidth: 0, style: { color: theme.text, background: theme.grid, fontSize: "11px" } } }] } }
+      ? { annotations: { xaxis: [{ x: bucketLabel(data.todayBucket, data.bucket), borderColor: theme.muted, strokeDashArray: 4, label: { text: t("Hari ini"), orientation: "horizontal" as const, borderWidth: 0, style: { color: theme.text, background: theme.grid, fontSize: "11px" } } }] } }
       : {}),
-    xaxis: { ...base.xaxis, categories: data.trend.map((t) => bucketLabel(t.bucket, data.bucket)), tickAmount: Math.min(data.trend.length - 1, 8), tooltip: { enabled: false } },
+    xaxis: { ...base.xaxis, categories: data.trend.map((pt) => bucketLabel(pt.bucket, data.bucket)), tickAmount: Math.min(data.trend.length - 1, 8), tooltip: { enabled: false } },
     yaxis: { ...base.yaxis, min: 0, labels: { style: { colors: theme.muted }, formatter: (v: number) => formatMetric(metric, v) } },
     tooltip: { theme: theme.mode, y: { formatter: (v: number) => formatMetric(metric, v) } },
     legend: { show: false },
@@ -188,7 +195,7 @@ export default function DashboardPage() {
   const donutOptions: ApexOptions | null = data && {
     ...base,
     chart: { ...base.chart, type: "donut", events: { dataPointSelection: (_e, _c, cfg) => toggle(statusKey, data.statusGroups[cfg?.dataPointIndex ?? -1]?.key ?? null, setStatusKey) } },
-    labels: data.statusGroups.map((g) => g.label),
+    labels: data.statusGroups.map((g) => t(g.label)),
     colors: data.statusGroups.map((g, i) => (g.key === "cancelled" ? theme.neutral : theme.series[i])),
     fill: { opacity: data.statusGroups.map((g) => (statusKey && statusKey !== g.key ? 0.3 : 1)) },
     stroke: { width: 2, colors: [theme.surface] },
@@ -197,11 +204,11 @@ export default function DashboardPage() {
       pie: {
         donut: {
           size: "68%",
-          labels: { show: true, name: { color: theme.text }, value: { color: theme.text, fontSize: "24px", fontWeight: 600 }, total: { show: true, label: "Total plan", color: theme.text, formatter: () => nf.format(data.statusGroups.reduce((s, g) => s + g.count, 0)) } },
+          labels: { show: true, name: { color: theme.text }, value: { color: theme.text, fontSize: "24px", fontWeight: 600 }, total: { show: true, label: t("Total plan"), color: theme.text, formatter: () => fmt(data.statusGroups.reduce((s, g) => s + g.count, 0)) } },
         },
       },
     },
-    tooltip: { theme: theme.mode, y: { formatter: (v: number) => `${v} plan` } },
+    tooltip: { theme: theme.mode, y: { formatter: (v: number) => t("{n} plan", { n: v }) } },
   };
 
   /** Horizontal bar with the selected bar highlighted and the rest dimmed. */
@@ -230,10 +237,10 @@ export default function DashboardPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Ringkasan pengiriman darat. Klik grafik untuk menyaring tabel plan di bawah.</p>
+          <p className="text-sm text-muted-foreground">{t("Ringkasan pengiriman darat. Klik grafik untuk menyaring tabel plan di bawah.")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-md border p-0.5" role="group" aria-label="Periode">
+          <div className="inline-flex rounded-md border p-0.5" role="group" aria-label={t("Periode")}>
             {RANGES.map((r) => (
               <button
                 key={r.value}
@@ -245,14 +252,14 @@ export default function DashboardPage() {
                 aria-pressed={range === r.value}
                 className={cn("rounded px-3 py-1 text-sm transition-colors", range === r.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
               >
-                {r.label}
+                {t(r.label)}
               </button>
             ))}
           </div>
-          <Button variant="outline" size="icon" onClick={() => void load(range)} disabled={isRefreshing} aria-label="Muat ulang">
+          <Button variant="outline" size="icon" onClick={() => void load(range)} disabled={isRefreshing} aria-label={t("Muat ulang")}>
             <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
           </Button>
-          {updatedAt && <span className="text-xs text-muted-foreground">Diperbarui {updatedAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>}
+          {updatedAt && <span className="text-xs text-muted-foreground">{t("Diperbarui {time}", { time: updatedAt.toLocaleTimeString(localeTag(), { hour: "2-digit", minute: "2-digit" }) })}</span>}
         </div>
       </div>
 
@@ -260,7 +267,7 @@ export default function DashboardPage() {
         <div className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive">
           {error}{" "}
           <button className="underline" onClick={() => void load(range)}>
-            Coba lagi
+            {t("Coba lagi")}
           </button>
         </div>
       )}
@@ -276,20 +283,28 @@ export default function DashboardPage() {
       {data && trendOptions && donutOptions && (
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <Tile label="Plan (tanpa batal)" value={nf.format(data.kpis.plans.value ?? 0)} change={data.kpis.plans.change} hint="vs sebelumnya" />
-            <Tile label="Dalam perjalanan" value={nf.format(data.kpis.inTransit.value ?? 0)} hint="saat ini" />
+            <Tile label="Plan (tanpa batal)" value={fmt(data.kpis.plans.value ?? 0)} change={data.kpis.plans.change} hint="vs sebelumnya" />
+            <Tile label="Dalam perjalanan" value={fmt(data.kpis.inTransit.value ?? 0)} hint="saat ini" />
             <Tile label="Biaya angkut" value={compactRupiah(data.kpis.freightCost.value ?? 0)} change={data.kpis.freightCost.change} hint="vs sebelumnya" />
-            <Tile label="Utilisasi muatan" value={data.kpis.avgUtilization.value === null ? "-" : `${nf.format(data.kpis.avgUtilization.value)}%`} change={data.kpis.avgUtilization.change} changeLabel=" poin" goodWhenUp hint="rata-rata" />
-            <Tile label="Bebas insiden" value={data.kpis.incidentFree.value === null ? "-" : `${nf.format(data.kpis.incidentFree.value)}%`} hint={`dari ${data.kpis.incidentFree.shipped} pengiriman`} />
+            <Tile label="Utilisasi muatan" value={data.kpis.avgUtilization.value === null ? "-" : `${fmt(data.kpis.avgUtilization.value)}%`} change={data.kpis.avgUtilization.change} changeLabel=" poin" goodWhenUp hint="rata-rata" />
+            <Tile label="Bebas insiden" value={data.kpis.incidentFree.value === null ? "-" : `${fmt(data.kpis.incidentFree.value)}%`} hint={`dari ${data.kpis.incidentFree.shipped} pengiriman`} />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-3">
             <Card
               className="lg:col-span-2"
               title="Tren pengiriman"
-              subtitle={`Per ${data.bucket === "day" ? "hari" : "minggu"}, berdasarkan tanggal berangkat${data.horizon > 0 ? `, termasuk jadwal ${data.horizon} hari ke depan` : ""}`}
+              subtitle={
+                data.bucket === "day"
+                  ? data.horizon > 0
+                    ? t("Per hari, berdasarkan tanggal berangkat, termasuk jadwal {days} hari ke depan", { days: data.horizon })
+                    : t("Per hari, berdasarkan tanggal berangkat")
+                  : data.horizon > 0
+                    ? t("Per minggu, berdasarkan tanggal berangkat, termasuk jadwal {days} hari ke depan", { days: data.horizon })
+                    : t("Per minggu, berdasarkan tanggal berangkat")
+              }
               action={
-                <div className="inline-flex rounded-md border p-0.5" role="group" aria-label="Metrik">
+                <div className="inline-flex rounded-md border p-0.5" role="group" aria-label={t("Metrik")}>
                   {METRICS.map((m) => (
                     <button
                       key={m.key}
@@ -298,7 +313,7 @@ export default function DashboardPage() {
                       aria-pressed={metric === m.key}
                       className={cn("rounded px-2.5 py-1 text-xs transition-colors", metric === m.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
                     >
-                      {m.label}
+                      {t(m.label)}
                     </button>
                   ))}
                 </div>
@@ -309,7 +324,7 @@ export default function DashboardPage() {
                 type="area"
                 height={290}
                 options={trendOptions}
-                series={[{ name: METRICS.find((m) => m.key === metric)?.series ?? "", data: data.trend.map((t) => t[metric]) }]}
+                series={[{ name: t(METRICS.find((m) => m.key === metric)?.series ?? ""), data: data.trend.map((pt) => pt[metric]) }]}
               />
             </Card>
 
@@ -330,7 +345,7 @@ export default function DashboardPage() {
                         >
                           <span className="flex items-center gap-2">
                             <span className="h-2.5 w-2.5 rounded-sm" style={{ background: g.key === "cancelled" ? theme.neutral : theme.series[i] }} />
-                            {g.label}
+                            {t(g.label)}
                           </span>
                           <span className="tabular-nums">{g.count}</span>
                         </button>
@@ -354,8 +369,8 @@ export default function DashboardPage() {
                     return (
                       <li key={a.key}>
                         <Link href={a.href} className="flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-muted/40">
-                          <Icon className={cn("h-4 w-4 shrink-0", style.tone)} aria-label={style.label} />
-                          <span className="flex-1">{a.title}</span>
+                          <Icon className={cn("h-4 w-4 shrink-0", style.tone)} aria-label={t(style.label)} />
+                          <span className="flex-1">{t(a.title)}</span>
                           <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold tabular-nums">{a.count}</span>
                           <ChevronRight className="h-4 w-4 text-muted-foreground" />
                         </Link>
@@ -365,7 +380,7 @@ export default function DashboardPage() {
                 </ul>
               )}
               {(data.kpis.openClaimAmount.value ?? 0) > 0 && (
-                <p className="text-xs text-muted-foreground">Klaim diajukan, belum selesai: {formatRupiah(data.kpis.openClaimAmount.value)}</p>
+                <p className="text-xs text-muted-foreground">{t("Klaim diajukan, belum selesai: {amount}", { amount: formatRupiah(data.kpis.openClaimAmount.value) })}</p>
               )}
             </Card>
 
@@ -403,11 +418,11 @@ export default function DashboardPage() {
                   type="bar"
                   height={chartHeight(data.destinations.length)}
                   options={{
-                    ...barOptions(data.destinations.map((d) => d.name), destination, (label) => toggle(destination, label, setDestination), (v) => nf.format(v), {
-                      tooltip: { theme: theme.mode, y: { formatter: (v: number) => `${v} plan` } },
+                    ...barOptions(data.destinations.map((d) => d.name), destination, (label) => toggle(destination, label, setDestination), (v) => fmt(v), {
+                      tooltip: { theme: theme.mode, y: { formatter: (v: number) => t("{n} plan", { n: v }) } },
                     }),
                   }}
-                  series={[{ name: "Plan", data: data.destinations.map((d) => d.plans) }]}
+                  series={[{ name: t("Plan"), data: data.destinations.map((d) => d.plans) }]}
                 />
               )}
             </Card>
@@ -420,16 +435,16 @@ export default function DashboardPage() {
                   key={`carrier-${carrier}`}
                   type="bar"
                   height={chartHeight(data.carriers.length)}
-                  options={barOptions(data.carriers.map((c) => c.name), carrier, (label) => toggle(carrier, label, setCarrier), (v) => nf.format(v), {
+                  options={barOptions(data.carriers.map((c) => c.name), carrier, (label) => toggle(carrier, label, setCarrier), (v) => fmt(v), {
                     tooltip: {
                       theme: theme.mode,
                       y: { formatter: (v: number, opts?: { dataPointIndex: number }) => {
                         const c = data.carriers[opts?.dataPointIndex ?? 0];
-                        return `${v} pengiriman · ${compactRupiah(c?.cost ?? 0)} · ${c?.incidents ?? 0} insiden`;
+                        return t("{n} pengiriman · {cost} · {incidents} insiden", { n: v, cost: compactRupiah(c?.cost ?? 0), incidents: c?.incidents ?? 0 });
                       } },
                     },
                   })}
-                  series={[{ name: "Pengiriman", data: data.carriers.map((c) => c.plans) }]}
+                  series={[{ name: t("Pengiriman"), data: data.carriers.map((c) => c.plans) }]}
                 />
               )}
             </Card>
@@ -441,11 +456,11 @@ export default function DashboardPage() {
                 <Chart
                   type="bar"
                   height={chartHeight(data.vehicleTypes.length)}
-                  options={barOptions(data.vehicleTypes.map((v) => v.type || "-"), null, null, (v) => `${nf.format(v)}%`, {
-                    xaxis: { ...base.xaxis, categories: data.vehicleTypes.map((v) => v.type || "-"), labels: { show: false }, max: 100 },
-                    tooltip: { theme: theme.mode, y: { formatter: (v: number, opts?: { dataPointIndex: number }) => `${nf.format(v)}% dari ${data.vehicleTypes[opts?.dataPointIndex ?? 0]?.plans ?? 0} plan` } },
+                  options={barOptions(data.vehicleTypes.map((v) => (v.type ? t(v.type) : "-")), null, null, (v) => `${fmt(v)}%`, {
+                    xaxis: { ...base.xaxis, categories: data.vehicleTypes.map((v) => (v.type ? t(v.type) : "-")), labels: { show: false }, max: 100 },
+                    tooltip: { theme: theme.mode, y: { formatter: (v: number, opts?: { dataPointIndex: number }) => t("{pct}% dari {n} plan", { pct: fmt(v), n: data.vehicleTypes[opts?.dataPointIndex ?? 0]?.plans ?? 0 }) } },
                   })}
-                  series={[{ name: "Utilisasi", data: data.vehicleTypes.map((v) => Math.round((v.avgUtilization ?? 0) * 10) / 10) }]}
+                  series={[{ name: t("Utilisasi"), data: data.vehicleTypes.map((v) => Math.round((v.avgUtilization ?? 0) * 10) / 10) }]}
                 />
               )}
             </Card>
@@ -457,10 +472,10 @@ export default function DashboardPage() {
                 <Chart
                   type="bar"
                   height={chartHeight(data.incidentTypes.length)}
-                  options={barOptions(data.incidentTypes.map((i) => INCIDENT_TYPE_LABEL[i.type as IncidentType] ?? i.type), null, null, (v) => nf.format(v), {
-                    tooltip: { theme: theme.mode, y: { formatter: (v: number, opts?: { dataPointIndex: number }) => `${v} insiden, ${data.incidentTypes[opts?.dataPointIndex ?? 0]?.open ?? 0} belum ditutup` } },
+                  options={barOptions(data.incidentTypes.map((i) => t(INCIDENT_TYPE_LABEL[i.type as IncidentType] ?? i.type)), null, null, (v) => fmt(v), {
+                    tooltip: { theme: theme.mode, y: { formatter: (v: number, opts?: { dataPointIndex: number }) => t("{n} insiden, {open} belum ditutup", { n: v, open: data.incidentTypes[opts?.dataPointIndex ?? 0]?.open ?? 0 }) } },
                   })}
-                  series={[{ name: "Insiden", data: data.incidentTypes.map((i) => i.total) }]}
+                  series={[{ name: t("Insiden"), data: data.incidentTypes.map((i) => i.total) }]}
                 />
               )}
             </Card>
@@ -476,14 +491,14 @@ export default function DashboardPage() {
                     setSearch(e.target.value);
                     setPage(1);
                   }}
-                  placeholder="Cari plan, rute, carrier..."
+                  placeholder={t("Cari plan, rute, carrier...")}
                   className="px-9"
                 />
               </div>
               {[
-                statusGroup && { label: `Status: ${statusGroup.label}`, clear: () => setStatusKey(null) },
-                destination && { label: `Tujuan: ${destination}`, clear: () => setDestination(null) },
-                carrier && { label: `Carrier: ${carrier}`, clear: () => setCarrier(null) },
+                statusGroup && { label: t("Status: {value}", { value: t(statusGroup.label) }), clear: () => setStatusKey(null) },
+                destination && { label: t("Tujuan: {value}", { value: destination }), clear: () => setDestination(null) },
+                carrier && { label: t("Carrier: {value}", { value: carrier }), clear: () => setCarrier(null) },
               ]
                 .filter((chip): chip is { label: string; clear: () => void } => Boolean(chip))
                 .map((chip) => (
@@ -501,7 +516,7 @@ export default function DashboardPage() {
                 ))}
               {hasFilter && (
                 <Button variant="ghost" size="sm" onClick={resetFilters}>
-                  Reset
+                  {t("Reset")}
                 </Button>
               )}
             </div>
@@ -510,13 +525,13 @@ export default function DashboardPage() {
               <Table containerClassName="rounded-none border-0 bg-transparent">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Plan</TableHead>
-                    <TableHead>Tujuan</TableHead>
-                    <TableHead>Carrier</TableHead>
-                    <TableHead>Berangkat</TableHead>
+                    <TableHead>{t("Plan")}</TableHead>
+                    <TableHead>{t("Tujuan")}</TableHead>
+                    <TableHead>{t("Carrier")}</TableHead>
+                    <TableHead>{t("Berangkat")}</TableHead>
                     <TableHead>ETA</TableHead>
-                    <TableHead className="text-right">Biaya</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">{t("Biaya")}</TableHead>
+                    <TableHead>{t("Status")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -529,7 +544,7 @@ export default function DashboardPage() {
                       </TableCell>
                       <TableCell>
                         <div>{p.destinationName}</div>
-                        <div className="text-xs text-muted-foreground">dari {p.originName}</div>
+                        <div className="text-xs text-muted-foreground">{t("dari {origin}", { origin: p.originName })}</div>
                       </TableCell>
                       <TableCell>{p.carrierName ?? "-"}</TableCell>
                       <TableCell>{formatPlanDate(p.plannedShipDate)}</TableCell>
@@ -543,20 +558,20 @@ export default function DashboardPage() {
                   {pageRows.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={7} className="py-6 text-center text-muted-foreground">
-                        Tidak ada plan yang cocok
+                        {t("Tidak ada plan yang cocok")}
                       </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
               <div className="flex items-center justify-between border-t px-3 py-2 text-sm text-muted-foreground">
-                <span>{filteredPlans.length} plan</span>
+                <span>{t("{n} plan", { n: filteredPlans.length })}</span>
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="icon" className="h-8 w-8" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
                   <span className="min-w-24 text-center">
-                    Page {page} of {totalPages}
+                    {t("Page {page} of {total}", { page, total: totalPages })}
                   </span>
                   <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
                     <ChevronRight className="h-4 w-4" />

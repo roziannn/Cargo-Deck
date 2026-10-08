@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft, Printer } from "lucide-react";
 
 import { getStoredAuthToken } from "@/lib/api/auth";
+import { useI18n } from "@/lib/i18n/provider";
 import { formatPlanDate, formatPlanDateTime, getDeliveryNote, type DeliveryNote } from "@/lib/api/shipping-plan";
 
 const HANDLING: Record<string, string> = { COLD_CHAIN: "Cold chain (jaga suhu)", FRAGILE: "Mudah pecah", HAZARDOUS: "Barang berbahaya" };
@@ -38,6 +39,7 @@ function Info({ label, value }: { label: string; value: string }) {
 }
 
 export default function DeliveryNotePage() {
+  const { t } = useI18n();
   const { newId } = useParams<{ newId: string }>();
   const [data, setData] = useState<DeliveryNote | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,11 +47,11 @@ export default function DeliveryNotePage() {
   useEffect(() => {
     getDeliveryNote(newId, getStoredAuthToken() ?? undefined)
       .then(setData)
-      .catch((e) => setError(e instanceof Error ? e.message : "Gagal mengambil surat jalan."));
+      .catch((e) => setError(e instanceof Error ? e.message : t("Gagal mengambil surat jalan.")));
   }, [newId]);
 
   if (error) return <div className="p-8 text-sm text-red-700">{error}</div>;
-  if (!data) return <div className="p-8 text-sm text-neutral-600">Memuat surat jalan...</div>;
+  if (!data) return <div className="p-8 text-sm text-neutral-600">{t("Memuat surat jalan...")}</div>;
 
   const { plan, note, items, preview } = data;
   // what is printed is what was really loaded; before loading is recorded the plan quantity stands in
@@ -66,10 +68,10 @@ export default function DeliveryNotePage() {
       <div className="mx-auto flex max-w-[210mm] items-center justify-between gap-3 px-4 py-4 print:hidden">
         <div className="space-y-1">
           <Link href={`/shipping/plan/${newId}`} className="inline-flex items-center text-sm text-neutral-600 hover:text-black">
-            <ChevronLeft className="mr-1 h-4 w-4" /> Kembali ke plan
+            <ChevronLeft className="mr-1 h-4 w-4" /> {t("Kembali ke plan")}
           </Link>
           <div className="text-sm text-neutral-700">
-            {preview ? "Preview — surat jalan belum diterbitkan, nomor akan muncul setelah plan diberangkatkan." : `Surat jalan ${note.deliveryNoteNo}`}
+            {preview ? t("Preview — surat jalan belum diterbitkan, nomor akan muncul setelah plan diberangkatkan.") : t("Surat jalan {no}", { no: note.deliveryNoteNo ?? "" })}
           </div>
         </div>
         <button
@@ -77,7 +79,7 @@ export default function DeliveryNotePage() {
           onClick={() => window.print()}
           className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
         >
-          <Printer className="h-4 w-4" /> Cetak / Simpan PDF
+          <Printer className="h-4 w-4" /> {t("Cetak / Simpan PDF")}
         </button>
       </div>
 
@@ -95,42 +97,42 @@ export default function DeliveryNotePage() {
               <div className="text-xs text-neutral-600">Logistic Shipping System</div>
             </div>
             <div className="text-right">
-              <div className="text-xl font-bold tracking-wider">SURAT JALAN</div>
-              <div className="text-sm font-semibold">{note.deliveryNoteNo ?? "(belum diterbitkan)"}</div>
-              <div className="text-xs text-neutral-600">{issuedAt ? `Diterbitkan ${issuedAt}` : `Rencana kirim ${formatPlanDate(plan.plannedShipDate)}`}</div>
+              <div className="text-xl font-bold tracking-wider">{t("SURAT JALAN")}</div>
+              <div className="text-sm font-semibold">{note.deliveryNoteNo ?? t("(belum diterbitkan)")}</div>
+              <div className="text-xs text-neutral-600">{issuedAt ? t("Diterbitkan {date}", { date: issuedAt }) : t("Rencana kirim {date}", { date: formatPlanDate(plan.plannedShipDate) })}</div>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <Party title="Pengirim" name={note.originName} address={note.originAddress} city={note.originCity} contact={note.originContact} phone={note.originPhone} />
-            <Party title="Penerima" name={note.destinationName} address={note.destinationAddress} city={note.destinationCity} contact={note.destinationContact} phone={note.destinationPhone} />
+            <Party title={t("Pengirim")} name={note.originName} address={note.originAddress} city={note.originCity} contact={note.originContact} phone={note.originPhone} />
+            <Party title={t("Penerima")} name={note.destinationName} address={note.destinationAddress} city={note.destinationCity} contact={note.destinationContact} phone={note.destinationPhone} />
           </div>
 
           <div className="grid grid-cols-2 gap-x-6 gap-y-1 border border-black p-3">
-            <Info label="No. Shipping Plan" value={plan.planNo} />
-            <Info label="Carrier" value={`${note.carrierName ?? "-"}${note.carrierType === "OWN" ? " (armada sendiri)" : ""}`} />
-            <Info label="Tanggal kirim" value={formatPlanDate(plan.plannedShipDate)} />
-            <Info label="Jenis kendaraan" value={[note.vehicleName, note.vehicleType].filter(Boolean).join(" · ")} />
-            <Info label="Permintaan tiba" value={formatPlanDate(plan.requestedDeliveryDate)} />
-            <Info label="No. Polisi" value={plan.plateNo ?? ""} />
-            <Info label="Prioritas" value={PRIORITY[plan.priority] ?? plan.priority} />
-            <Info label="Driver" value={note.driverName ?? ""} />
-            <Info label="Penanganan khusus" value={plan.specialHandling ? (HANDLING[plan.specialHandling] ?? plan.specialHandling) : "Tidak ada"} />
-            <Info label="No. HP / SIM" value={[note.driverPhone, note.driverLicenseNo].filter(Boolean).join(" / ")} />
-            <Info label="No. Segel" value={plan.sealNo ?? ""} />
-            <Info label="Berat timbang (netto)" value={netWeight !== null ? `${netWeight} kg` : ""} />
-            {plan.loadingTempC !== null && <Info label="Suhu saat muat" value={`${plan.loadingTempC} °C`} />}
+            <Info label={t("No. Shipping Plan")} value={plan.planNo} />
+            <Info label={t("Carrier")} value={`${note.carrierName ?? "-"}${note.carrierType === "OWN" ? ` (${t("armada sendiri")})` : ""}`} />
+            <Info label={t("Tanggal kirim")} value={formatPlanDate(plan.plannedShipDate)} />
+            <Info label={t("Jenis kendaraan")} value={[note.vehicleName, note.vehicleType].filter(Boolean).join(" · ")} />
+            <Info label={t("Permintaan tiba")} value={formatPlanDate(plan.requestedDeliveryDate)} />
+            <Info label={t("No. Polisi")} value={plan.plateNo ?? ""} />
+            <Info label={t("Prioritas")} value={PRIORITY[plan.priority] ? t(PRIORITY[plan.priority]) : plan.priority} />
+            <Info label={t("Driver")} value={note.driverName ?? ""} />
+            <Info label={t("Penanganan khusus")} value={plan.specialHandling ? (HANDLING[plan.specialHandling] ? t(HANDLING[plan.specialHandling]) : plan.specialHandling) : t("Tidak ada")} />
+            <Info label={t("No. HP / SIM")} value={[note.driverPhone, note.driverLicenseNo].filter(Boolean).join(" / ")} />
+            <Info label={t("No. Segel")} value={plan.sealNo ?? ""} />
+            <Info label={t("Berat timbang (netto)")} value={netWeight !== null ? `${netWeight} kg` : ""} />
+            {plan.loadingTempC !== null && <Info label={t("Suhu saat muat")} value={`${plan.loadingTempC} °C`} />}
           </div>
 
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="bg-neutral-100">
-                <th className="w-8 border border-black px-2 py-1.5 text-center">No</th>
-                <th className="w-24 border border-black px-2 py-1.5 text-left">Kode</th>
-                <th className="border border-black px-2 py-1.5 text-left">Nama barang</th>
-                <th className="w-24 border border-black px-2 py-1.5 text-right">Dikirim (karton)</th>
-                <th className="w-24 border border-black px-2 py-1.5 text-right">Berat satuan (kg)</th>
-                <th className="w-24 border border-black px-2 py-1.5 text-right">Berat total (kg)</th>
+                <th className="w-8 border border-black px-2 py-1.5 text-center">{t("No")}</th>
+                <th className="w-24 border border-black px-2 py-1.5 text-left">{t("Kode")}</th>
+                <th className="border border-black px-2 py-1.5 text-left">{t("Nama barang")}</th>
+                <th className="w-24 border border-black px-2 py-1.5 text-right">{t("Dikirim (karton)")}</th>
+                <th className="w-24 border border-black px-2 py-1.5 text-right">{t("Berat satuan (kg)")}</th>
+                <th className="w-24 border border-black px-2 py-1.5 text-right">{t("Berat total (kg)")}</th>
               </tr>
             </thead>
             <tbody>
@@ -141,7 +143,7 @@ export default function DeliveryNotePage() {
                   <td className="border border-black px-2 py-1">{item.itemName}</td>
                   <td className="border border-black px-2 py-1 text-right">
                     {sent(item)}
-                    {sent(item) !== item.qty && <div className="text-[10px] font-normal text-neutral-600">rencana {item.qty}</div>}
+                    {sent(item) !== item.qty && <div className="text-[10px] font-normal text-neutral-600">{t("rencana {qty}", { qty: item.qty })}</div>}
                   </td>
                   <td className="border border-black px-2 py-1 text-right">{item.unitWeightKg ?? "-"}</td>
                   <td className="border border-black px-2 py-1 text-right">{item.unitWeightKg ? +(Number(item.unitWeightKg) * sent(item)).toFixed(2) : "-"}</td>
@@ -149,7 +151,7 @@ export default function DeliveryNotePage() {
               ))}
               <tr className="font-semibold">
                 <td colSpan={3} className="border border-black px-2 py-1.5 text-right">
-                  Total
+                  {t("Total")}
                 </td>
                 <td className="border border-black px-2 py-1.5 text-right">{totalQty}</td>
                 <td className="border border-black px-2 py-1.5" />
@@ -159,19 +161,19 @@ export default function DeliveryNotePage() {
           </table>
 
           <div className="border border-black p-3 text-xs">
-            <div className="font-semibold">Catatan</div>
+            <div className="font-semibold">{t("Catatan")}</div>
             <div className="mt-1 min-h-8">{plan.notes || "-"}</div>
           </div>
 
           <p className="text-[11px] leading-snug text-neutral-700">
-            Barang di atas diterima oleh penerima dalam keadaan baik dan jumlah sesuai dengan surat jalan ini. Selisih atau kerusakan harus dicatat pada kolom catatan dan diketahui driver sebelum surat jalan ditandatangani.
+            {t("Barang di atas diterima oleh penerima dalam keadaan baik dan jumlah sesuai dengan surat jalan ini. Selisih atau kerusakan harus dicatat pada kolom catatan dan diketahui driver sebelum surat jalan ditandatangani.")}
           </p>
 
           <div className="grid grid-cols-3 gap-4 pt-2 text-center text-xs">
             {["Pengirim (Gudang)", "Driver", "Penerima"].map((role) => (
               <div key={role}>
-                <div className="font-semibold">{role}</div>
-                <div className="mt-14 border-t border-black pt-1 text-neutral-600">Nama jelas, tanggal, tanda tangan &amp; cap</div>
+                <div className="font-semibold">{t(role)}</div>
+                <div className="mt-14 border-t border-black pt-1 text-neutral-600">{t("Nama jelas, tanggal, tanda tangan & cap")}</div>
               </div>
             ))}
           </div>

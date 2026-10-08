@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useI18n } from "@/lib/i18n/provider";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getStoredAuthToken } from "@/lib/api/auth";
 import { saveShippingPlanLoading, type ShippingPlanDetail } from "@/lib/api/shipping-plan";
@@ -40,6 +41,7 @@ export function ShippingLoadingDialog({
   onOpenChange: (open: boolean) => void;
   onSaved: (plan: ShippingPlanDetail) => void;
 }) {
+  const { t } = useI18n();
   const [loaded, setLoaded] = useState<Record<string, string>>(() =>
     Object.fromEntries(plan.items.map((item) => [item.cubstoolNewId, String(item.loadedQty ?? item.pickedQty ?? item.qty)])),
   );
@@ -72,8 +74,8 @@ export function ShippingLoadingDialog({
   const isCold = plan.specialHandling === "COLD_CHAIN";
 
   async function save() {
-    if (invalidQty) return void toast.error("Jumlah dimuat harus bilangan bulat dan tidak boleh melebihi yang di-pick.");
-    if (tareKg !== null && grossKg !== null && grossKg <= tareKg) return void toast.error("Berat isi harus lebih besar dari berat kosong.");
+    if (invalidQty) return void toast.error(t("Jumlah dimuat harus bilangan bulat dan tidak boleh melebihi yang di-pick."));
+    if (tareKg !== null && grossKg !== null && grossKg <= tareKg) return void toast.error(t("Berat isi harus lebih besar dari berat kosong."));
 
     setIsSaving(true);
     try {
@@ -90,11 +92,11 @@ export function ShippingLoadingDialog({
         },
         getStoredAuthToken() ?? undefined,
       );
-      toast.success(saved.readiness.complete ? "Loading lengkap. Siap diberangkatkan." : "Data loading tersimpan.");
+      toast.success(saved.readiness.complete ? t("Loading lengkap. Siap diberangkatkan.") : t("Data loading tersimpan."));
       onSaved(saved);
       onOpenChange(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Gagal menyimpan data loading.");
+      toast.error(error instanceof Error ? error.message : t("Gagal menyimpan data loading."));
     } finally {
       setIsSaving(false);
     }
@@ -104,21 +106,21 @@ export function ShippingLoadingDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
-          <DialogTitle>Loading — {plan.planNo}</DialogTitle>
+          <DialogTitle>{t("Loading")} — {plan.planNo}</DialogTitle>
           <DialogDescription>
-            {plan.plateNo} · {plan.driverName} · {plan.vehicleName}. Semua isian di bawah harus lengkap sebelum truk bisa diberangkatkan.
+            {plan.plateNo} · {plan.driverName} · {plan.vehicleName}. {t("Semua isian di bawah harus lengkap sebelum truk bisa diberangkatkan.")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-6 md:grid-cols-2">
           <div className="space-y-5">
             <div className="space-y-2">
-              <Label>Checklist sebelum berangkat</Label>
+              <Label>{t("Checklist sebelum berangkat")}</Label>
               <div className="space-y-2 rounded-lg border p-3">
                 {CHECKS.map(({ key, label }) => (
                   <label key={key} className="flex cursor-pointer items-start gap-2 text-sm">
                     <Checkbox checked={checks[key]} onCheckedChange={(value) => setChecks((current) => ({ ...current, [key]: value === true }))} className="mt-0.5" />
-                    <span>{label}</span>
+                    <span>{t(label)}</span>
                   </label>
                 ))}
               </div>
@@ -126,29 +128,29 @@ export function ShippingLoadingDialog({
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Nomor segel</Label>
+                <Label>{t("Nomor segel")}</Label>
                 <Input value={sealNo} onChange={(e) => setSealNo(e.target.value.toUpperCase())} placeholder="SEG-000123" />
               </div>
               <div className="space-y-1">
-                <Label>Suhu bak (°C){isCold ? " *" : ""}</Label>
-                <Input value={temp} onChange={(e) => setTemp(e.target.value.replace(/[^\d.,-]/g, ""))} placeholder={isCold ? "mis. 4.5" : "opsional"} inputMode="decimal" />
+                <Label>{t("Suhu bak (°C)")}{isCold ? " *" : ""}</Label>
+                <Input value={temp} onChange={(e) => setTemp(e.target.value.replace(/[^\d.,-]/g, ""))} placeholder={isCold ? t("mis. 4.5") : t("opsional")} inputMode="decimal" />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label>Timbang (kg, opsional)</Label>
+              <Label>{t("Timbang (kg, opsional)")}</Label>
               <div className="grid grid-cols-2 gap-3">
-                <Input value={tare} onChange={(e) => setTare(decimal(e.target.value))} placeholder="Berat kosong" inputMode="decimal" />
-                <Input value={gross} onChange={(e) => setGross(decimal(e.target.value))} placeholder="Berat isi" inputMode="decimal" />
+                <Input value={tare} onChange={(e) => setTare(decimal(e.target.value))} placeholder={t("Berat kosong")} inputMode="decimal" />
+                <Input value={gross} onChange={(e) => setGross(decimal(e.target.value))} placeholder={t("Berat isi")} inputMode="decimal" />
               </div>
               <div className="rounded-md bg-muted/40 p-2 text-xs">
                 {netKg === null ? (
-                  <span className="text-muted-foreground">Isi berat kosong dan berat isi untuk melihat berat bersih muatan.</span>
+                  <span className="text-muted-foreground">{t("Isi berat kosong dan berat isi untuk melihat berat bersih muatan.")}</span>
                 ) : (
                   <>
-                    <span className={payload !== null && netKg > payload ? "font-semibold text-destructive" : "font-semibold"}>Berat bersih {netKg} kg</span>
-                    {payload !== null ? ` · max payload ${payload} kg` : ""} · muatan di sistem {Math.round(cargoKg * 10) / 10} kg
-                    {payload !== null && netKg > payload ? <div className="mt-1 text-destructive">Melebihi max payload, truk tidak boleh berangkat.</div> : null}
+                    <span className={payload !== null && netKg > payload ? "font-semibold text-destructive" : "font-semibold"}>{t("Berat bersih {kg} kg", { kg: netKg })}</span>
+                    {payload !== null ? ` · ${t("max payload {kg} kg", { kg: payload })}` : ""} · {t("muatan di sistem {kg} kg", { kg: Math.round(cargoKg * 10) / 10 })}
+                    {payload !== null && netKg > payload ? <div className="mt-1 text-destructive">{t("Melebihi max payload, truk tidak boleh berangkat.")}</div> : null}
                   </>
                 )}
               </div>
@@ -156,15 +158,15 @@ export function ShippingLoadingDialog({
           </div>
 
           <div className="space-y-4">
-            <Label>Jumlah yang dimuat</Label>
+            <Label>{t("Jumlah yang dimuat")}</Label>
             <div className="overflow-hidden rounded-lg border">
               <Table containerClassName="rounded-none border-0 bg-transparent">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Barang</TableHead>
-                    <TableHead className="text-right">Rencana</TableHead>
-                    <TableHead className="text-right">Di-pick</TableHead>
-                    <TableHead className="w-24 text-right">Dimuat</TableHead>
+                    <TableHead>{t("Barang")}</TableHead>
+                    <TableHead className="text-right">{t("Rencana")}</TableHead>
+                    <TableHead className="text-right">{t("Di-pick")}</TableHead>
+                    <TableHead className="w-24 text-right">{t("Dimuat")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -196,12 +198,12 @@ export function ShippingLoadingDialog({
             </div>
 
             <div className="space-y-1">
-              <Label>Catatan loading</Label>
+              <Label>{t("Catatan loading")}</Label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
-                placeholder="Mis. waktu muat, kondisi karton, kejadian selama muat"
+                placeholder={t("Mis. waktu muat, kondisi karton, kejadian selama muat")}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               />
             </div>
@@ -210,10 +212,10 @@ export function ShippingLoadingDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
-            Tutup
+            {t("Tutup")}
           </Button>
           <Button onClick={() => void save()} disabled={isSaving}>
-            {isSaving ? "Menyimpan..." : "Simpan Data Loading"}
+            {isSaving ? t("Menyimpan...") : t("Simpan Data Loading")}
           </Button>
         </DialogFooter>
       </DialogContent>

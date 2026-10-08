@@ -12,6 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getStoredAuthToken } from "@/lib/api/auth";
+import { localeTag } from "@/lib/i18n/locale";
+import { useI18n } from "@/lib/i18n/provider";
 import { createCoreUser, listCoreUsers, updateCoreUser, type CoreUserItem } from "@/lib/api/core-user";
 
 type FormState = {
@@ -28,10 +30,11 @@ const EMPTY_FORM: FormState = { username: "", email: "", name: "", site: "", pas
 function formatDate(value: string | null) {
   if (!value) return "-";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(localeTag(), { day: "2-digit", month: "short", year: "numeric" });
 }
 
 export default function UserPage() {
+  const { t } = useI18n();
   const [data, setData] = useState<CoreUserItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -48,12 +51,12 @@ export default function UserPage() {
     try {
       setData(await listCoreUsers(getStoredAuthToken() ?? undefined));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Gagal mengambil data user.");
+      toast.error(error instanceof Error ? error.message : t("Gagal mengambil data user."));
       setData([]);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const id = window.setTimeout(() => void load(), 0);
@@ -85,15 +88,15 @@ export default function UserPage() {
 
   async function handleSave() {
     if (!form.username.trim() || !form.email.trim() || !form.name.trim()) {
-      toast.error("Username, Email, dan Name wajib diisi.");
+      toast.error(t("Username, Email, dan Name wajib diisi."));
       return;
     }
     if (editingId === null && form.password.length < 8) {
-      toast.error("Password minimal 8 karakter.");
+      toast.error(t("Password minimal 8 karakter."));
       return;
     }
     if (editingId !== null && form.password !== "" && form.password.length < 8) {
-      toast.error("Password baru minimal 8 karakter.");
+      toast.error(t("Password baru minimal 8 karakter."));
       return;
     }
 
@@ -111,11 +114,11 @@ export default function UserPage() {
       if (editingId === null) await createCoreUser(payload, token);
       else await updateCoreUser(editingId, payload, token);
 
-      toast.success(`User "${payload.username}" berhasil disimpan.`);
+      toast.success(t('User "{name}" berhasil disimpan.', { name: payload.username }));
       setOpenForm(false);
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Gagal menyimpan user.");
+      toast.error(error instanceof Error ? error.message : t("Gagal menyimpan user."));
     } finally {
       setIsSaving(false);
     }
@@ -126,8 +129,8 @@ export default function UserPage() {
       <Toaster position="top-center" />
 
       <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">User</h1>
-        <p className="text-sm text-muted-foreground">Akun yang bisa login. Hak akses menu diatur lewat Role.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("User")}</h1>
+        <p className="text-sm text-muted-foreground">{t("Akun yang bisa login. Hak akses menu diatur lewat Role.")}</p>
       </div>
 
       <div className="flex items-center justify-between">
@@ -139,12 +142,12 @@ export default function UserPage() {
               setSearch(e.target.value);
               setPage(1);
             }}
-            placeholder="Search username, name, email, site..."
+            placeholder={t("Search username, name, email, site...")}
             className="w-full rounded-md px-9 py-2 text-sm"
           />
         </div>
         <Button onClick={openCreate} className="font-medium">
-          + Add User
+          {t("+ Add User")}
         </Button>
       </div>
 
@@ -153,12 +156,12 @@ export default function UserPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Username</TableHead>
-              <TableHead>Name</TableHead>
+              <TableHead>{t("Name")}</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Site</TableHead>
-              <TableHead>Is Active</TableHead>
-              <TableHead>Created Date</TableHead>
-              <TableHead className="w-24 text-center">Actions</TableHead>
+              <TableHead>{t("Is Active")}</TableHead>
+              <TableHead>{t("Created Date")}</TableHead>
+              <TableHead className="w-24 text-center">{t("Actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -170,9 +173,9 @@ export default function UserPage() {
                 <TableCell>{row.site || "-"}</TableCell>
                 <TableCell>
                   {row.isActive ? (
-                    <Badge className="border border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Active</Badge>
+                    <Badge className="border border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">{t("Active")}</Badge>
                   ) : (
-                    <Badge variant="secondary">Inactive</Badge>
+                    <Badge variant="secondary">{t("Inactive")}</Badge>
                   )}
                 </TableCell>
                 <TableCell>{formatDate(row.createdDate)}</TableCell>
@@ -186,7 +189,7 @@ export default function UserPage() {
             {(isLoading || paginated.length === 0) && (
               <TableRow>
                 <TableCell colSpan={7} className="py-6 text-center text-muted-foreground">
-                  {isLoading ? "Loading data..." : "No data found"}
+                  {isLoading ? t("Loading data...") : t("No data found")}
                 </TableCell>
               </TableRow>
             )}
@@ -195,14 +198,18 @@ export default function UserPage() {
 
         <div className="flex flex-col gap-2 border-t px-3 py-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>
-            Showing {Math.min(startIndex + 1, filtered.length || 0)} to {Math.min(startIndex + rowsPerPage, filtered.length)} of {filtered.length} entries
+            {t("Showing {from} to {to} of {total} entries", {
+              from: Math.min(startIndex + 1, filtered.length || 0),
+              to: Math.min(startIndex + rowsPerPage, filtered.length),
+              total: filtered.length,
+            })}
           </span>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="icon" className="h-8 w-8" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="min-w-24 text-center">
-              Page {page} of {totalPages}
+              {t("Page {page} of {total}", { page, total: totalPages })}
             </span>
             <Button variant="outline" size="icon" className="h-8 w-8" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>
               <ChevronRight className="h-4 w-4" />
@@ -214,7 +221,7 @@ export default function UserPage() {
       <Dialog open={openForm} onOpenChange={setOpenForm}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingId === null ? "Add User" : "Edit User"}</DialogTitle>
+            <DialogTitle>{editingId === null ? t("Add User") : t("Edit User")}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -224,34 +231,34 @@ export default function UserPage() {
                 <Input value={form.username} onChange={(e) => setField("username", e.target.value)} placeholder="e.g. budi.santoso" autoComplete="off" />
               </div>
               <div className="space-y-1">
-                <Label>Site</Label>
+                <Label>{t("Site")}</Label>
                 <Input value={form.site} onChange={(e) => setField("site", e.target.value)} placeholder="e.g. JKT" />
               </div>
             </div>
             <div className="space-y-1">
-              <Label>Name</Label>
-              <Input value={form.name} onChange={(e) => setField("name", e.target.value)} placeholder="Full name" />
+              <Label>{t("Name")}</Label>
+              <Input value={form.name} onChange={(e) => setField("name", e.target.value)} placeholder={t("Full name")} />
             </div>
             <div className="space-y-1">
               <Label>Email</Label>
               <Input type="email" value={form.email} onChange={(e) => setField("email", e.target.value)} placeholder="name@company.com" autoComplete="off" />
-              {editingId !== null && <p className="text-xs text-muted-foreground">Mengubah email ikut memindahkan keanggotaan role user ini.</p>}
+              {editingId !== null && <p className="text-xs text-muted-foreground">{t("Mengubah email ikut memindahkan keanggotaan role user ini.")}</p>}
             </div>
             <div className="space-y-1">
-              <Label>{editingId === null ? "Password" : "New Password"}</Label>
+              <Label>{editingId === null ? t("Password") : t("New Password")}</Label>
               <Input
                 type="password"
                 value={form.password}
                 onChange={(e) => setField("password", e.target.value)}
-                placeholder={editingId === null ? "Minimal 8 karakter" : "Kosongkan jika tidak diganti"}
+                placeholder={editingId === null ? t("Minimal 8 karakter") : t("Kosongkan jika tidak diganti")}
                 autoComplete="new-password"
               />
             </div>
             {editingId !== null && (
               <div className="flex items-center justify-between rounded-md border p-3">
                 <div className="space-y-0.5">
-                  <Label>Is Active</Label>
-                  <p className="text-xs text-muted-foreground">User nonaktif tidak bisa login.</p>
+                  <Label>{t("Is Active")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("User nonaktif tidak bisa login.")}</p>
                 </div>
                 <Switch checked={form.isActive} onCheckedChange={(checked) => setField("isActive", checked)} disabled={isSaving} />
               </div>
@@ -260,10 +267,10 @@ export default function UserPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenForm(false)} disabled={isSaving}>
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button onClick={() => void handleSave()} disabled={isSaving}>
-              {isSaving ? "Saving..." : editingId === null ? "Add" : "Save"}
+              {isSaving ? t("Saving...") : editingId === null ? t("Add") : t("Save")}
             </Button>
           </DialogFooter>
         </DialogContent>
