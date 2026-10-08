@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Check, ChevronLeft, CircleCheck, CircleDashed, FileText, PackageCheck, Truck } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
 
+import { Arrow, RouteText } from "@/components/route-text";
 import { ShippingBookingDialog } from "@/components/shipping-booking-dialog";
 import { ShippingLoadingDialog } from "@/components/shipping-loading-dialog";
 import { ShippingPickingDialog } from "@/components/shipping-picking-dialog";
@@ -258,7 +259,7 @@ export default function ShippingPlanDetailPage() {
             <PriorityBadge priority={plan.priority} />
           </div>
           <p className="text-sm text-muted-foreground">
-            {plan.originName} → {plan.destinationName}
+            <RouteText from={plan.originName} to={plan.destinationName} />
           </p>
         </div>
 
@@ -362,7 +363,7 @@ export default function ShippingPlanDetailPage() {
               >
                 {step.label}
               </span>
-              {index < STEPS.length - 1 && <span className="text-muted-foreground">→</span>}
+              {index < STEPS.length - 1 && <Arrow className="mx-0" />}
             </li>
           ))}
         </ol>
@@ -639,7 +640,15 @@ export default function ShippingPlanDetailPage() {
           {[...plan.history].reverse().map((h, index) => (
             <li key={index} className="space-y-0.5">
               <div className="text-sm font-medium">
-                {h.fromStatus ? `${h.fromStatus} → ${h.toStatus}` : h.toStatus}
+                {h.fromStatus ? (
+                  <>
+                    {h.fromStatus}
+                    <Arrow />
+                    {h.toStatus}
+                  </>
+                ) : (
+                  h.toStatus
+                )}
               </div>
               {h.note && <div className="text-sm text-muted-foreground">{h.note}</div>}
               <div className="text-xs text-muted-foreground">
@@ -680,7 +689,7 @@ export default function ShippingPlanDetailPage() {
               {plan.carrierName} · {plan.driverName} · {plan.plateNo}
             </div>
             <div className="text-muted-foreground">
-              {plan.originName} → {plan.destinationName} · {plan.items.reduce((sum, i) => sum + (i.loadedQty ?? 0), 0)} karton dimuat
+              <RouteText from={plan.originName} to={plan.destinationName} /> · {plan.items.reduce((sum, i) => sum + (i.loadedQty ?? 0), 0)} karton dimuat
             </div>
             <div className="text-muted-foreground">
               Segel {plan.sealNo} · berat bersih {plan.readiness.netWeightKg} kg

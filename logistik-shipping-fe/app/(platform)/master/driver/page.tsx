@@ -7,6 +7,7 @@ import { Toaster, toast } from "react-hot-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -235,18 +236,14 @@ export default function DriverPage() {
             </div>
             <div className="space-y-1">
               <Label>Carrier</Label>
-              <select
+              <Combobox
+                options={carriers.map((c) => ({ value: c.value, label: c.label }))}
                 value={form.carrierNewId}
-                onChange={(e) => setField("carrierNewId", e.target.value)}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="">Semua carrier (tidak terikat)</option>
-                {carriers.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setField("carrierNewId", v)}
+                placeholder="Semua carrier (tidak terikat)"
+                searchPlaceholder="Cari carrier..."
+                clearable
+              />
             </div>
             {editingNewId && (
               <div className="flex items-center justify-between rounded-md border p-3">

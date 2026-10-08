@@ -5,13 +5,13 @@ import { useEffect, useState } from "react";
 import { Toaster, toast } from "react-hot-toast";
 
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getStoredAuthToken } from "@/lib/api/auth";
 import { listLocationLov, type LocationLovItem } from "@/lib/api/mst-location";
 import type { ShippingPlanHeaderPayload, ShippingPriority, SpecialHandling } from "@/lib/api/shipping-plan";
 
-const SELECT_CLASS = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm";
 
 export const EMPTY_PLAN_HEADER: ShippingPlanHeaderPayload = {
   originLocationNewId: "",
@@ -74,25 +74,23 @@ export function ShippingPlanForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1">
           <Label>Origin (Warehouse)</Label>
-          <select className={SELECT_CLASS} value={values.originLocationNewId} onChange={(e) => set("originLocationNewId", e.target.value)}>
-            <option value="">Select origin</option>
-            {warehouses.map((l) => (
-              <option key={l.value} value={l.value}>
-                {l.label}
-              </option>
-            ))}
-          </select>
+          <Combobox
+            options={warehouses.map((l) => ({ value: l.value, label: l.label }))}
+            value={values.originLocationNewId}
+            onChange={(v) => set("originLocationNewId", v)}
+            placeholder="Select origin"
+            searchPlaceholder="Cari gudang..."
+          />
         </div>
         <div className="space-y-1">
           <Label>Destination (Customer / DC)</Label>
-          <select className={SELECT_CLASS} value={values.destinationLocationNewId} onChange={(e) => set("destinationLocationNewId", e.target.value)}>
-            <option value="">Select destination</option>
-            {customers.map((l) => (
-              <option key={l.value} value={l.value}>
-                {l.label}
-              </option>
-            ))}
-          </select>
+          <Combobox
+            options={customers.map((l) => ({ value: l.value, label: l.label }))}
+            value={values.destinationLocationNewId}
+            onChange={(v) => set("destinationLocationNewId", v)}
+            placeholder="Select destination"
+            searchPlaceholder="Cari customer / DC..."
+          />
         </div>
         <div className="space-y-1">
           <Label>Planned Ship Date</Label>
@@ -104,25 +102,29 @@ export function ShippingPlanForm({
         </div>
         <div className="space-y-1">
           <Label>Priority</Label>
-          <select className={SELECT_CLASS} value={values.priority} onChange={(e) => set("priority", e.target.value as ShippingPriority)}>
-            <option value="LOW">Low</option>
-            <option value="NORMAL">Normal</option>
-            <option value="HIGH">High</option>
-            <option value="URGENT">Urgent</option>
-          </select>
+          <Combobox
+            options={[
+              { value: "LOW", label: "Low" },
+              { value: "NORMAL", label: "Normal" },
+              { value: "HIGH", label: "High" },
+              { value: "URGENT", label: "Urgent" },
+            ]}
+            value={values.priority}
+            onChange={(v) => set("priority", v as ShippingPriority)}
+          />
         </div>
         <div className="space-y-1">
           <Label>Special Handling</Label>
-          <select
-            className={SELECT_CLASS}
+          <Combobox
+            options={[
+              { value: "", label: "None" },
+              { value: "COLD_CHAIN", label: "Cold chain" },
+              { value: "FRAGILE", label: "Fragile" },
+              { value: "HAZARDOUS", label: "Hazardous" },
+            ]}
             value={values.specialHandling ?? ""}
-            onChange={(e) => set("specialHandling", (e.target.value || null) as SpecialHandling | null)}
-          >
-            <option value="">None</option>
-            <option value="COLD_CHAIN">Cold chain</option>
-            <option value="FRAGILE">Fragile</option>
-            <option value="HAZARDOUS">Hazardous</option>
-          </select>
+            onChange={(v) => set("specialHandling", (v || null) as SpecialHandling | null)}
+          />
         </div>
       </div>
 

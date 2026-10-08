@@ -6,6 +6,7 @@ import type { ApexOptions } from "apexcharts";
 import { AlertOctagon, AlertTriangle, ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight, Info, RefreshCw, Search, X } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
 
+import { Arrow, RouteText } from "@/components/route-text";
 import { Chart, baseOptions, useChartTheme } from "@/components/dashboard/chart";
 import { PlanStatusBadge } from "@/components/shipping-plan-status";
 import { Button } from "@/components/ui/button";
@@ -377,7 +378,7 @@ export default function DashboardPage() {
                         <div className="min-w-0 flex-1">
                           <div className="truncate font-medium">{p.planNo}</div>
                           <div className="truncate text-xs text-muted-foreground">
-                            {p.originName} → {p.destinationName}
+                            <RouteText from={p.originName} to={p.destinationName} />
                           </div>
                         </div>
                         <PlanStatusBadge status={p.status as ShippingPlanStatus} />

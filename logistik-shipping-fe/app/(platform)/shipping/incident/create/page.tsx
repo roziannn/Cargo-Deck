@@ -3,14 +3,17 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { ChevronLeft } from "lucide-react";
+import { AlertTriangle, ChevronLeft } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
 
+import { RouteText } from "@/components/route-text";
+import { RichMessage } from "@/components/rich-message";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getStoredAuthToken } from "@/lib/api/auth";
-import { INCIDENT_TYPE_LABEL, createShippingIncident, type IncidentType } from "@/lib/api/shipping-incident";
+import { INCIDENT_STATUS_LABEL, INCIDENT_TYPE_LABEL, createShippingIncident, isIncidentOpen, listShippingIncidents, type IncidentType, type ShippingIncident } from "@/lib/api/shipping-incident";
 import { formatPlanDate, listShippingPlans, type ShippingPlan } from "@/lib/api/shipping-plan";
 import { cn } from "@/lib/utils";
 
@@ -35,14 +38,23 @@ function CreateIncidentForm() {
   const [description, setDescription] = useState("");
   const [targetDate, setTargetDate] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [incidents, setIncidents] = useState<ShippingIncident[]>([]);
+  const [serverError, setServerError] = useState<string | null>(null);
 
   useEffect(() => {
     listShippingPlans(getStoredAuthToken() ?? undefined)
       .then((rows) => setPlans(rows.filter((p) => p.status === "DISPATCHED" || p.status === "COMPLETED")))
       .catch((e) => toast.error(e instanceof Error ? e.message : "Gagal mengambil plan."));
+    listShippingIncidents(getStoredAuthToken() ?? undefined)
+      .then(setIncidents)
+      .catch(() => setIncidents([]));
   }, []);
 
+  // a plan can only have one open incident at a time; the server enforces it too
+  const blocking = incidents.find((i) => i.planNewId === planNewId && isIncidentOpen(i.status)) ?? null;
+
   async function save() {
+    setServerError(null);
     if (!planNewId) return void toast.error("Pilih plan pengirimannya.");
     if (!description.trim()) return void toast.error("Jelaskan kejadiannya.");
     setIsSaving(true);
@@ -54,7 +66,7 @@ function CreateIncidentForm() {
       toast.success(`Insiden ${saved.incidentNo} dilaporkan.`);
       router.push(`/shipping/incident/${saved.newId}`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal melaporkan insiden.");
+      setServerError(e instanceof Error ? e.message : "Gagal melaporkan insiden.");
       setIsSaving(false);
     }
   }
@@ -74,18 +86,52 @@ function CreateIncidentForm() {
       <div className="max-w-3xl space-y-5 rounded-lg border p-5">
         <div className="space-y-1.5">
           <Label>Plan pengiriman</Label>
-          <select value={planNewId} onChange={(e) => setPlanNewId(e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
-            <option value="">Pilih plan yang sedang dikirim atau baru selesai</option>
-            {plans.map((p) => (
-              <option key={p.newId} value={p.newId}>
-                {p.planNo} · {p.originName} → {p.destinationName} · {p.status}
-              </option>
-            ))}
-          </select>
+          <Combobox
+            options={plans.map((p) => ({
+              value: p.newId,
+              label: p.planNo,
+              description: (
+                <>
+                  <RouteText from={p.originName} to={p.destinationName} /> · {p.status}
+                </>
+              ),
+              searchText: `${p.originName} ${p.destinationName} ${p.status}`,
+            }))}
+            value={planNewId}
+            onChange={(v) => {
+              setPlanNewId(v);
+              setServerError(null);
+            }}
+            placeholder="Pilih plan yang sedang dikirim atau baru selesai"
+            searchPlaceholder="Cari no plan, asal, tujuan..."
+          />
           {plans.find((p) => p.newId === planNewId)?.etaDate && (
             <p className="text-xs text-muted-foreground">ETA {formatPlanDate(plans.find((p) => p.newId === planNewId)?.etaDate)}</p>
           )}
         </div>
+
+        {(blocking || serverError) && (
+          <div role="alert" className="flex gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="space-y-1">
+              <p>
+                {blocking ? (
+                  <>
+                    Plan ini masih punya insiden <strong>{blocking.incidentNo}</strong> dengan status <strong>{INCIDENT_STATUS_LABEL[blocking.status]}</strong>. Selesaikan atau tolak insiden itu dulu
+                    sebelum melaporkan yang baru.
+                  </>
+                ) : (
+                  <RichMessage text={serverError ?? ""} />
+                )}
+              </p>
+              {blocking && (
+                <Link href={`/shipping/incident/${blocking.newId}`} className="font-medium underline">
+                  Buka {blocking.incidentNo}
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="space-y-2">
           <Label>Jenis insiden</Label>
@@ -143,7 +189,7 @@ function CreateIncidentForm() {
           <Button variant="outline" asChild>
             <Link href="/shipping/incident">Batal</Link>
           </Button>
-          <Button onClick={() => void save()} disabled={isSaving}>
+          <Button onClick={() => void save()} disabled={isSaving || blocking !== null}>
             Laporkan Insiden
           </Button>
         </div>
