@@ -4,7 +4,6 @@ import * as React from "react";
 import { Truck } from "lucide-react";
 
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
-import Image from "next/image";
 
 export function TeamSwitcher() {
   return (
@@ -18,7 +17,7 @@ export function TeamSwitcher() {
 
             <div className="h-8 w-px bg-border/80" />
 
-            <Image src="/logo/site_logo.png" alt="Site Logo" width={64} height={40} className="object-contain" priority />
+            <span className="truncate text-base font-semibold tracking-tight group-data-[collapsible=icon]:hidden">Cargo Deck</span>
           </div>
         </SidebarMenuButton>
       </SidebarMenuItem>
